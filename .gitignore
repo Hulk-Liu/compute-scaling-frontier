@@ -26,6 +26,7 @@ Thumbs.db
 
 # Project artifacts
 results/raw/*.jsonl
+results/_smoke*.csv
 data/augmented_train_*.jsonl
 data/_smoke*.jsonl
 checkpoints/

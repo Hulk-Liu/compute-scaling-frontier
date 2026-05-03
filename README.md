@@ -52,6 +52,8 @@ The practical hypothesis is that inference-time scaling can be attractive at low
 
 ## How to Run
 
+For the GPU training path, use the Colab checklist in [docs/colab_runbook.md](./docs/colab_runbook.md).
+
 Install dependencies:
 
 ```bash

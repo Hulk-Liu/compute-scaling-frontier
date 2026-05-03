@@ -71,7 +71,7 @@ bash scripts/verify_setup.sh --live
 Prepare the deterministic eval subset:
 
 ```bash
-.venv/bin/python -m src.prepare_eval_set --n 50 --output data/eval_gsm8k_50.jsonl
+.venv/bin/python -m src.prepare_eval_set --sample-size 50 --output data/eval_gsm8k_50.jsonl
 ```
 
 Generate and validate a tiny synthetic training set:

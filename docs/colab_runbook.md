@@ -200,7 +200,7 @@ Run in Colab.
 set -euo pipefail
 cd /content/red-hat-ai-take-home
 .venv/bin/python -m pytest tests/test_train_lora.py tests/test_validate_training_data.py
-.venv/bin/python -m src.prepare_eval_set --n 50 --output data/eval_gsm8k_50.jsonl
+.venv/bin/python -m src.prepare_eval_set --sample-size 50 --output data/eval_gsm8k_50.jsonl
 ```
 
 Run a tiny `sdg_hub` generation smoke before generating a larger file:

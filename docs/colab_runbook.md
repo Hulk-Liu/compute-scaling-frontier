@@ -199,7 +199,10 @@ Run in Colab.
 %%bash
 set -euo pipefail
 cd /content/red-hat-ai-take-home
-.venv/bin/python -m pytest tests/test_train_lora.py tests/test_validate_training_data.py
+.venv/bin/python -m pytest \
+  tests/test_train_lora.py \
+  tests/test_validate_training_data.py \
+  tests/test_filter_training_data.py
 .venv/bin/python -m src.prepare_eval_set --sample-size 50 --output data/eval_gsm8k_50.jsonl
 ```
 
@@ -227,10 +230,16 @@ import os
 
 TRAIN_N = 100
 TRAIN_PATH = f"data/augmented_train_{TRAIN_N}.jsonl"
+VALID_TRAIN_PATH = f"data/augmented_train_{TRAIN_N}_valid.jsonl"
+INVALID_TRAIN_PATH = f"data/augmented_train_{TRAIN_N}_invalid.jsonl"
 print(TRAIN_PATH)
+print(VALID_TRAIN_PATH)
+print(INVALID_TRAIN_PATH)
 
 os.environ["TRAIN_N"] = str(TRAIN_N)
 os.environ["TRAIN_PATH"] = TRAIN_PATH
+os.environ["VALID_TRAIN_PATH"] = VALID_TRAIN_PATH
+os.environ["INVALID_TRAIN_PATH"] = INVALID_TRAIN_PATH
 ```
 
 ```bash
@@ -243,11 +252,16 @@ cd /content/red-hat-ai-take-home
   --max-concurrency 1
 
 .venv/bin/python -m src.validate_training_data \
+  "$TRAIN_PATH"
+
+.venv/bin/python -m src.filter_training_data \
   "$TRAIN_PATH" \
-  --fail-on-mismatch
+  --valid-output "$VALID_TRAIN_PATH" \
+  --invalid-output "$INVALID_TRAIN_PATH" \
+  --min-accuracy 0.95
 ```
 
-If validation fails, do not train on the full file blindly. Inspect failed rows, then either regenerate, filter bad rows, or lower concurrency while debugging.
+Do not train on the unfiltered file if validation reports mismatches. The filter step writes valid records to `VALID_TRAIN_PATH` and invalid records, with validation metadata, to `INVALID_TRAIN_PATH`.
 
 Persist the generated training file to Drive:
 
@@ -257,6 +271,8 @@ set -euo pipefail
 cd /content/red-hat-ai-take-home
 mkdir -p /content/drive/MyDrive/red-hat-ai-take-home/data
 cp "$TRAIN_PATH" /content/drive/MyDrive/red-hat-ai-take-home/data/
+cp "$VALID_TRAIN_PATH" /content/drive/MyDrive/red-hat-ai-take-home/data/
+cp "$INVALID_TRAIN_PATH" /content/drive/MyDrive/red-hat-ai-take-home/data/
 ls -lh /content/drive/MyDrive/red-hat-ai-take-home/data/
 ```
 
@@ -278,7 +294,7 @@ os.environ["CKPT_DIR"] = CKPT_DIR
 set -euo pipefail
 cd /content/red-hat-ai-take-home
 .venv/bin/python -m src.train_lora \
-  --data-path "$TRAIN_PATH" \
+  --data-path "$VALID_TRAIN_PATH" \
   --ckpt-output-dir "$CKPT_DIR"
 ```
 
@@ -297,7 +313,7 @@ Run in Colab only after the dry-run output looks correct.
 set -euo pipefail
 cd /content/red-hat-ai-take-home
 .venv/bin/python -m src.train_lora \
-  --data-path "$TRAIN_PATH" \
+  --data-path "$VALID_TRAIN_PATH" \
   --ckpt-output-dir "$CKPT_DIR" \
   --execute
 ```
@@ -336,6 +352,8 @@ notes = "\n".join(
         f"repo_commit={repo_commit}",
         f"train_n={os.environ['TRAIN_N']}",
         f"train_path={os.environ['TRAIN_PATH']}",
+        f"valid_train_path={os.environ['VALID_TRAIN_PATH']}",
+        f"invalid_train_path={os.environ['INVALID_TRAIN_PATH']}",
         f"ckpt_dir={os.environ['CKPT_DIR']}",
         f"gpu={gpu}",
         "",
@@ -357,7 +375,7 @@ set -euo pipefail
 cd /content/red-hat-ai-take-home
 mkdir -p checkpoints data
 cp -r "$CKPT_DIR" checkpoints/
-cp "/content/drive/MyDrive/red-hat-ai-take-home/data/augmented_train_${TRAIN_N}.jsonl" data/
+cp "/content/drive/MyDrive/red-hat-ai-take-home/data/augmented_train_${TRAIN_N}_valid.jsonl" data/
 ```
 
 These files are intentionally ignored by git.

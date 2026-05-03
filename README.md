@@ -79,6 +79,7 @@ Generate and validate a tiny synthetic training set:
 ```bash
 .venv/bin/python -m src.data_generation --n 3 --output data/_smoke_augmented_train_3.jsonl
 .venv/bin/python -m src.validate_training_data data/_smoke_augmented_train_3.jsonl --fail-on-mismatch
+.venv/bin/python -m src.filter_training_data data/_smoke_augmented_train_3.jsonl
 ```
 
 Dry-run the LoRA training call that will run in Colab:

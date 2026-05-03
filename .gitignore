@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv/
+
+# Secrets — NEVER commit
+.env
+.env.local
+*.key
+credentials.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Project artifacts
+results/raw/*.jsonl
+data/augmented_train_*.jsonl
+data/_smoke*.jsonl
+checkpoints/
+*.safetensors
+*.bin
+
+# Notebooks
+.ipynb_checkpoints/

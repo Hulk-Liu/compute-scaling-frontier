@@ -1,0 +1,16 @@
+[project]
+name = "red-hat-ai-take-home"
+version = "0.1.0"
+description = "Compute-Matched Pareto Frontier: when does fine-tuning pay off vs. inference-time scaling? An integration of sdg_hub + training_hub + its_hub."
+requires-python = ">=3.11"
+dependencies = [
+    "datasets>=4.8.5",
+    "its-hub[lm]>=1.0.0",
+    "matplotlib>=3.10.9",
+    "openai>=2.33.0",
+    "pandas>=3.0.2",
+    "python-dotenv>=1.2.2",
+    "pyyaml>=6.0.3",
+    "sdg-hub>=0.9.2",
+    "training-hub>=0.8.0",
+]

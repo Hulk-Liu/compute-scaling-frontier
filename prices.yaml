@@ -1,0 +1,30 @@
+# Cost accounting assumptions — all USD.
+# All cost numbers in src/cost_accounting.py read from this file.
+# Source links/dates in comments make this defensible during onsite review.
+
+# OpenAI API pricing (per 1M tokens), as of 2026-05.
+# https://openai.com/api/pricing
+openai:
+  gpt-4o-mini:
+    input_per_1m_usd: 0.15
+    output_per_1m_usd: 0.60
+  gpt-4o:
+    input_per_1m_usd: 2.50
+    output_per_1m_usd: 10.00
+
+# Self-hosted model serving cost — derived from RunPod public on-demand pricing for A10 GPU.
+# Used as the per-token cost for vLLM-served Qwen2.5-1.5B + LoRA inference.
+# Assumption: A10 sustains ~600 tok/s for Qwen 1.5B fp16, so $0.40/hr = ~$0.18 / 1M tokens.
+# https://www.runpod.io/pricing  (A10, on-demand)
+self_hosted:
+  qwen_2_5_1_5b:
+    gpu_hourly_usd: 0.40
+    sustained_throughput_tok_per_sec: 600
+    derived_per_1m_tokens_usd: 0.18  # = 0.40 / (600 * 3600 / 1e6)
+
+# Synthetic data generation cost per example (sdg_hub flow → gpt-4o-mini).
+# Assumption: avg 1500 input + 500 output tokens per generated training example.
+# = 1500/1e6 * 0.15 + 500/1e6 * 0.60 = 0.000525 USD/example.
+# Round up to 0.001 to absorb noise.
+data_generation:
+  per_example_usd: 0.001

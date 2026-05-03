@@ -137,6 +137,9 @@ def run_lora_training(config: LoRATrainingConfig, execute: bool = False) -> LoRA
     if not execute:
         return plan
 
+    if config.backend == "unsloth":
+        import unsloth  # noqa: F401
+
     from training_hub import lora_sft
 
     lora_sft(**plan.lora_kwargs)

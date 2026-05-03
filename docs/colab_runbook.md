@@ -145,24 +145,19 @@ Verify the CUDA and LoRA path:
 set -euo pipefail
 cd /content/red-hat-ai-take-home
 .venv/bin/python - <<'PY'
+import unsloth
 import torch
 import training_hub
 
 print("torch:", torch.__version__)
 print("cuda_available:", torch.cuda.is_available())
 print("cuda_device:", torch.cuda.get_device_name(0) if torch.cuda.is_available() else "none")
-print("training_hub:", getattr(training_hub, "__version__", "?"))
-
-try:
-    import unsloth
-except Exception as exc:
-    raise SystemExit(f"unsloth import failed: {type(exc).__name__}: {exc}") from exc
-
 print("unsloth import: ok")
+print("training_hub:", getattr(training_hub, "__version__", "?"))
 PY
 ```
 
-If this fails, stop and capture the error in the project notes. The most likely issue is a CUDA/Unsloth dependency mismatch.
+If this fails, stop and capture the error in the project notes. The most likely issue is a CUDA/Unsloth dependency mismatch. If you see a warning about skipped C++ extensions for the current Torch version, continue to the dry-run step first; treat it as a performance warning unless training fails.
 
 ## Configure Secrets
 

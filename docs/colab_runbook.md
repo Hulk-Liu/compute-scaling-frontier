@@ -4,6 +4,8 @@ This runbook is a cell-by-cell checklist for running the GPU-dependent parts of 
 
 Use this first as a smoke run. After the smoke path works, increase `TRAIN_N` and run the full experiment grid.
 
+Colab shell cells in this document use `%%bash`. Copy the whole fenced block into one Colab code cell. Do not copy only the first line of a heredoc command into a Python cell.
+
 ## What Runs Where
 
 Run locally:
@@ -43,9 +45,11 @@ Do not commit `.env`, API keys, checkpoints, raw JSONL outputs, or generated tra
 Run in Colab. Use `Runtime > Change runtime type > GPU`.
 
 ```bash
-!nvidia-smi
-!python --version
-!pwd
+%%bash
+set -euo pipefail
+nvidia-smi
+python --version
+pwd
 ```
 
 Expected:
@@ -93,11 +97,13 @@ Run in Colab. Replace the URL with your repo.
 For a public repo:
 
 ```bash
-%cd /content
-!git clone https://github.com/<your-user>/<your-repo>.git red-hat-ai-take-home
-%cd /content/red-hat-ai-take-home
-!git status --short
-!git log --oneline -5
+%%bash
+set -euo pipefail
+cd /content
+git clone https://github.com/<your-user>/<your-repo>.git red-hat-ai-take-home
+cd /content/red-hat-ai-take-home
+git status --short
+git log --oneline -5
 ```
 
 For a private repo, prefer a short-lived token stored in Colab secrets. Avoid pasting tokens into committed files.
@@ -110,11 +116,13 @@ os.environ["GITHUB_TOKEN"] = userdata.get("GITHUB_TOKEN")
 ```
 
 ```bash
-%cd /content
-!git clone https://oauth2:${GITHUB_TOKEN}@github.com/<your-user>/<your-repo>.git red-hat-ai-take-home
-%cd /content/red-hat-ai-take-home
-!git status --short
-!git log --oneline -5
+%%bash
+set -euo pipefail
+cd /content
+git clone https://oauth2:${GITHUB_TOKEN}@github.com/<your-user>/<your-repo>.git red-hat-ai-take-home
+cd /content/red-hat-ai-take-home
+git status --short
+git log --oneline -5
 ```
 
 ## Install Dependencies
@@ -122,15 +130,21 @@ os.environ["GITHUB_TOKEN"] = userdata.get("GITHUB_TOKEN")
 Run in Colab.
 
 ```bash
-!pip install -q uv
-!uv sync
-!uv pip install --python .venv/bin/python "training-hub[lora]>=0.8.0"
+%%bash
+set -euo pipefail
+cd /content/red-hat-ai-take-home
+pip install -q uv
+uv sync
+uv pip install --python .venv/bin/python "training-hub[lora]>=0.8.0"
 ```
 
 Verify the CUDA and LoRA path:
 
 ```bash
-!.venv/bin/python - <<'PY'
+%%bash
+set -euo pipefail
+cd /content/red-hat-ai-take-home
+.venv/bin/python - <<'PY'
 import torch
 import training_hub
 
@@ -172,7 +186,14 @@ print("HF_TOKEN set:", bool(os.environ.get("HF_TOKEN")))
 Optional Hugging Face login:
 
 ```bash
-!.venv/bin/huggingface-cli login --token "$HF_TOKEN"
+%%bash
+set -euo pipefail
+cd /content/red-hat-ai-take-home
+if [ -n "${HF_TOKEN:-}" ]; then
+  .venv/bin/huggingface-cli login --token "$HF_TOKEN"
+else
+  echo "HF_TOKEN is not set; skipping Hugging Face login."
+fi
 ```
 
 ## Baseline Checks
@@ -180,18 +201,24 @@ Optional Hugging Face login:
 Run in Colab.
 
 ```bash
-!.venv/bin/python -m pytest tests/test_train_lora.py tests/test_validate_training_data.py
-!.venv/bin/python -m src.prepare_eval_set --n 50 --output data/eval_gsm8k_50.jsonl
+%%bash
+set -euo pipefail
+cd /content/red-hat-ai-take-home
+.venv/bin/python -m pytest tests/test_train_lora.py tests/test_validate_training_data.py
+.venv/bin/python -m src.prepare_eval_set --n 50 --output data/eval_gsm8k_50.jsonl
 ```
 
 Run a tiny `sdg_hub` generation smoke before generating a larger file:
 
 ```bash
-!.venv/bin/python -m src.data_generation \
+%%bash
+set -euo pipefail
+cd /content/red-hat-ai-take-home
+.venv/bin/python -m src.data_generation \
   --n 3 \
   --output data/_smoke_augmented_train_3.jsonl
 
-!.venv/bin/python -m src.validate_training_data \
+.venv/bin/python -m src.validate_training_data \
   data/_smoke_augmented_train_3.jsonl \
   --fail-on-mismatch
 ```
@@ -212,12 +239,15 @@ os.environ["TRAIN_PATH"] = TRAIN_PATH
 ```
 
 ```bash
-!.venv/bin/python -m src.data_generation \
+%%bash
+set -euo pipefail
+cd /content/red-hat-ai-take-home
+.venv/bin/python -m src.data_generation \
   --n "$TRAIN_N" \
   --output "$TRAIN_PATH" \
   --max-concurrency 1
 
-!.venv/bin/python -m src.validate_training_data \
+.venv/bin/python -m src.validate_training_data \
   "$TRAIN_PATH" \
   --fail-on-mismatch
 ```
@@ -227,9 +257,12 @@ If validation fails, do not train on the full file blindly. Inspect failed rows,
 Persist the generated training file to Drive:
 
 ```bash
-!mkdir -p /content/drive/MyDrive/red-hat-ai-take-home/data
-!cp "$TRAIN_PATH" /content/drive/MyDrive/red-hat-ai-take-home/data/
-!ls -lh /content/drive/MyDrive/red-hat-ai-take-home/data/
+%%bash
+set -euo pipefail
+cd /content/red-hat-ai-take-home
+mkdir -p /content/drive/MyDrive/red-hat-ai-take-home/data
+cp "$TRAIN_PATH" /content/drive/MyDrive/red-hat-ai-take-home/data/
+ls -lh /content/drive/MyDrive/red-hat-ai-take-home/data/
 ```
 
 ## Dry-Run LoRA Training
@@ -246,7 +279,10 @@ os.environ["CKPT_DIR"] = CKPT_DIR
 ```
 
 ```bash
-!.venv/bin/python -m src.train_lora \
+%%bash
+set -euo pipefail
+cd /content/red-hat-ai-take-home
+.venv/bin/python -m src.train_lora \
   --data-path "$TRAIN_PATH" \
   --ckpt-output-dir "$CKPT_DIR"
 ```
@@ -262,7 +298,10 @@ Expected:
 Run in Colab only after the dry-run output looks correct.
 
 ```bash
-!.venv/bin/python -m src.train_lora \
+%%bash
+set -euo pipefail
+cd /content/red-hat-ai-take-home
+.venv/bin/python -m src.train_lora \
   --data-path "$TRAIN_PATH" \
   --ckpt-output-dir "$CKPT_DIR" \
   --execute
@@ -273,8 +312,11 @@ Record the wall-clock training time, GPU type, and any peak memory notes. These 
 After training:
 
 ```bash
-!find "$CKPT_DIR" -maxdepth 2 -type f | sort | head -50
-!du -sh "$CKPT_DIR"
+%%bash
+set -euo pipefail
+cd /content/red-hat-ai-take-home
+find "$CKPT_DIR" -maxdepth 2 -type f | sort | head -50
+du -sh "$CKPT_DIR"
 ```
 
 ## Save Run Metadata
@@ -315,9 +357,12 @@ print(notes)
 Run in Colab if you want the local Colab workspace to see persisted artifacts:
 
 ```bash
-!mkdir -p checkpoints data
-!cp -r "$CKPT_DIR" checkpoints/
-!cp "/content/drive/MyDrive/red-hat-ai-take-home/data/augmented_train_${TRAIN_N}.jsonl" data/
+%%bash
+set -euo pipefail
+cd /content/red-hat-ai-take-home
+mkdir -p checkpoints data
+cp -r "$CKPT_DIR" checkpoints/
+cp "/content/drive/MyDrive/red-hat-ai-take-home/data/augmented_train_${TRAIN_N}.jsonl" data/
 ```
 
 These files are intentionally ignored by git.

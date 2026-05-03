@@ -185,7 +185,7 @@ Optional Hugging Face login:
 set -euo pipefail
 cd /content/red-hat-ai-take-home
 if [ -n "${HF_TOKEN:-}" ]; then
-  .venv/bin/huggingface-cli login --token "$HF_TOKEN"
+  .venv/bin/hf auth login --token "$HF_TOKEN"
 else
   echo "HF_TOKEN is not set; skipping Hugging Face login."
 fi

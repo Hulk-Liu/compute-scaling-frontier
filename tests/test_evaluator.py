@@ -1,9 +1,11 @@
 import unittest
 
 from src.evaluator import (
+    build_answer_diagnostics,
     canonicalize_number,
     evaluate_answer,
     evaluate_batch,
+    extract_final_marker_answer,
     extract_gsm8k_gold_answer,
     extract_last_number,
 )
@@ -44,6 +46,35 @@ class EvaluatorTests(unittest.TestCase):
         )
         self.assertFalse(record.is_correct)
         self.assertIsNone(record.extracted_prediction)
+
+    def test_extract_final_marker_answer_uses_number_after_marker(self):
+        self.assertEqual(extract_final_marker_answer("13 appears first\n#### 42"), "42")
+        self.assertIsNone(extract_final_marker_answer("13 appears but no marker"))
+
+    def test_build_answer_diagnostics_detects_valid_marker_answer(self):
+        diagnostics = build_answer_diagnostics(
+            prediction="Reasoning has 13 first.\n#### 42",
+            gold_answer="gold reasoning\n#### 42",
+        )
+
+        self.assertEqual(diagnostics["extracted_prediction"], "42")
+        self.assertEqual(diagnostics["extracted_gold"], "42")
+        self.assertTrue(diagnostics["is_correct"])
+        self.assertTrue(diagnostics["has_final_marker"])
+        self.assertEqual(diagnostics["extracted_marker_answer"], "42")
+        self.assertTrue(diagnostics["answer_format_ok"])
+
+    def test_build_answer_diagnostics_flags_truncated_marker(self):
+        diagnostics = build_answer_diagnostics(
+            prediction="The total is 57500.\n####",
+            gold_answer="gold reasoning\n#### 57500",
+        )
+
+        self.assertEqual(diagnostics["extracted_prediction"], "57500")
+        self.assertTrue(diagnostics["is_correct"])
+        self.assertTrue(diagnostics["has_final_marker"])
+        self.assertIsNone(diagnostics["extracted_marker_answer"])
+        self.assertFalse(diagnostics["answer_format_ok"])
 
     def test_evaluate_batch_uses_strict_alignment(self):
         records, summary = evaluate_batch(

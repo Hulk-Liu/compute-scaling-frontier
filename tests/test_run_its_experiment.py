@@ -5,9 +5,7 @@ from pathlib import Path
 from src.run_its_experiment import (
     _base_raw_row,
     _response_content,
-    build_answer_diagnostics,
     build_math_prompt,
-    extract_final_marker_answer,
     final_answer_projection,
     read_eval_records,
     write_jsonl,
@@ -33,35 +31,6 @@ class RunITSExperimentTests(unittest.TestCase):
 
     def test_final_answer_projection_falls_back_to_stripped_text(self):
         self.assertEqual(final_answer_projection(" no numeric answer "), "no numeric answer")
-
-    def test_extract_final_marker_answer_uses_number_after_marker(self):
-        self.assertEqual(extract_final_marker_answer("13 appears first\n#### 42"), "42")
-        self.assertIsNone(extract_final_marker_answer("13 appears but no marker"))
-
-    def test_build_answer_diagnostics_detects_valid_marker_answer(self):
-        diagnostics = build_answer_diagnostics(
-            prediction="Reasoning has 13 first.\n#### 42",
-            gold_answer="gold reasoning\n#### 42",
-        )
-
-        self.assertEqual(diagnostics["extracted_prediction"], "42")
-        self.assertEqual(diagnostics["extracted_gold"], "42")
-        self.assertTrue(diagnostics["is_correct"])
-        self.assertTrue(diagnostics["has_final_marker"])
-        self.assertEqual(diagnostics["extracted_marker_answer"], "42")
-        self.assertTrue(diagnostics["answer_format_ok"])
-
-    def test_build_answer_diagnostics_flags_truncated_marker(self):
-        diagnostics = build_answer_diagnostics(
-            prediction="The total is 57500.\n####",
-            gold_answer="gold reasoning\n#### 57500",
-        )
-
-        self.assertEqual(diagnostics["extracted_prediction"], "57500")
-        self.assertTrue(diagnostics["is_correct"])
-        self.assertTrue(diagnostics["has_final_marker"])
-        self.assertIsNone(diagnostics["extracted_marker_answer"])
-        self.assertFalse(diagnostics["answer_format_ok"])
 
     def test_base_raw_row_sets_common_schema(self):
         row = _base_raw_row(

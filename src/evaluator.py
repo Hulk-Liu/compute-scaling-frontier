@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 import re
-from typing import Iterable
+from typing import Any, Iterable
 
 
 NUMBER_PATTERN = re.compile(
@@ -102,6 +102,30 @@ def evaluate_answer(prediction: str, gold_answer: str) -> EvaluationRecord:
         extracted_gold=extracted_gold,
         is_correct=is_correct,
     )
+
+
+def extract_final_marker_answer(response: str) -> str | None:
+    """Extract the numeric answer after the final GSM8K answer marker."""
+
+    if GSM8K_FINAL_ANSWER_MARKER not in response:
+        return None
+    marker_tail = response.rsplit(GSM8K_FINAL_ANSWER_MARKER, maxsplit=1)[-1]
+    return extract_last_number(marker_tail)
+
+
+def build_answer_diagnostics(prediction: str, gold_answer: str) -> dict[str, Any]:
+    """Build exact-match and prompt-compliance diagnostics for one prediction."""
+
+    evaluation = evaluate_answer(prediction, gold_answer)
+    marker_answer = extract_final_marker_answer(prediction)
+    return {
+        "extracted_prediction": evaluation.extracted_prediction,
+        "extracted_gold": evaluation.extracted_gold,
+        "is_correct": evaluation.is_correct,
+        "has_final_marker": GSM8K_FINAL_ANSWER_MARKER in prediction,
+        "extracted_marker_answer": marker_answer,
+        "answer_format_ok": marker_answer is not None,
+    }
 
 
 def summarize(records: Iterable[EvaluationRecord]) -> EvaluationSummary:

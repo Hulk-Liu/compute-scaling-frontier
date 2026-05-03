@@ -34,6 +34,8 @@ One important implementation detail came out of the first Self-Consistency smoke
 
 There is also one evaluation caveat worth keeping visible: with the tiny default `max_tokens=256`, one smoke response was truncated after deriving the correct answer. Exact match still succeeded because the evaluator extracts the last numeric token, but the full experiment should use a larger `--max-tokens` and monitor malformed final lines.
 
+To make that visible in result tables, aggregation now includes answer-format diagnostics such as `has_final_marker_rate`, `answer_format_ok_rate`, `missing_final_marker_count`, and `malformed_final_marker_count`.
+
 ## Problem and Approach
 
 The core question is whether fine-tuning and inference-time scaling compound or substitute for each other under a compute budget.

@@ -2,7 +2,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from src.aggregate_results import aggregate_cell, read_jsonl, write_aggregated_csv
+from src.aggregate_results import (
+    aggregate_answer_diagnostics,
+    aggregate_cell,
+    read_jsonl,
+    write_aggregated_csv,
+)
 
 
 PRICES = {
@@ -56,6 +61,9 @@ class AggregateResultsTests(unittest.TestCase):
         self.assertEqual(row["n_eval"], 2)
         self.assertEqual(row["correct"], 1)
         self.assertEqual(row["accuracy"], 0.5)
+        self.assertEqual(row["has_final_marker_count"], 0)
+        self.assertEqual(row["answer_format_ok_count"], 0)
+        self.assertEqual(row["missing_final_marker_count"], 2)
         self.assertAlmostEqual(row["train_cost_usd"], 0.3)
         self.assertAlmostEqual(row["inference_cost_per_query_usd"], 0.00018)
         self.assertAlmostEqual(row["total_cost_usd_at_1000"], 0.48)
@@ -74,6 +82,22 @@ class AggregateResultsTests(unittest.TestCase):
         )
 
         self.assertEqual(row["correct"], 1)
+
+    def test_aggregate_answer_diagnostics_counts_format_compliance(self):
+        diagnostics = aggregate_answer_diagnostics(
+            [
+                ("Reasoning.\n#### 12", "#### 12"),
+                ("The total is 9.\n####", "#### 9"),
+                ("Answer: 10", "#### 10"),
+            ]
+        )
+
+        self.assertEqual(diagnostics["has_final_marker_count"], 2)
+        self.assertAlmostEqual(diagnostics["has_final_marker_rate"], 2 / 3)
+        self.assertEqual(diagnostics["answer_format_ok_count"], 1)
+        self.assertAlmostEqual(diagnostics["answer_format_ok_rate"], 1 / 3)
+        self.assertEqual(diagnostics["missing_final_marker_count"], 1)
+        self.assertEqual(diagnostics["malformed_final_marker_count"], 1)
 
     def test_aggregate_cell_requires_prediction(self):
         with self.assertRaises(ValueError):

@@ -15,7 +15,7 @@ from src.cost_accounting import (
     total_serving_cost_usd,
     training_cost_usd,
 )
-from src.evaluator import evaluate_batch
+from src.evaluator import build_answer_diagnostics, evaluate_batch
 
 
 DEFAULT_QUERY_COUNTS = (1_000, 10_000, 100_000, 1_000_000)
@@ -56,6 +56,39 @@ def _prediction_and_gold(row: dict[str, Any], row_index: int) -> tuple[str, str]
     return prediction, gold
 
 
+def _rate(count: int, total: int) -> float:
+    if total == 0:
+        return 0.0
+    return count / total
+
+
+def aggregate_answer_diagnostics(
+    prediction_gold_pairs: Iterable[tuple[str, str]],
+) -> dict[str, Any]:
+    """Aggregate prompt-compliance diagnostics for one experiment cell."""
+
+    diagnostics = [
+        build_answer_diagnostics(prediction, gold)
+        for prediction, gold in prediction_gold_pairs
+    ]
+    total = len(diagnostics)
+    final_marker_count = sum(
+        1 for diagnostic in diagnostics if diagnostic["has_final_marker"]
+    )
+    answer_format_ok_count = sum(
+        1 for diagnostic in diagnostics if diagnostic["answer_format_ok"]
+    )
+
+    return {
+        "has_final_marker_count": final_marker_count,
+        "has_final_marker_rate": _rate(final_marker_count, total),
+        "answer_format_ok_count": answer_format_ok_count,
+        "answer_format_ok_rate": _rate(answer_format_ok_count, total),
+        "missing_final_marker_count": total - final_marker_count,
+        "malformed_final_marker_count": final_marker_count - answer_format_ok_count,
+    }
+
+
 def aggregate_cell(
     raw_rows: Iterable[dict[str, Any]],
     prices: dict[str, Any],
@@ -79,6 +112,7 @@ def aggregate_cell(
     predictions = [prediction for prediction, _gold in pairs]
     gold_answers = [gold for _prediction, gold in pairs]
     _records, eval_summary = evaluate_batch(predictions, gold_answers)
+    answer_diagnostics = aggregate_answer_diagnostics(pairs)
 
     train_cost = training_cost_usd(
         prices,
@@ -101,6 +135,7 @@ def aggregate_cell(
         "n_eval": eval_summary.total,
         "correct": eval_summary.correct,
         "accuracy": eval_summary.accuracy,
+        **answer_diagnostics,
         "train_gpu_hours": train_gpu_hours,
         "train_cost_usd": train_cost.total_usd,
         "model_tokens_per_sample": model_tokens_per_sample,

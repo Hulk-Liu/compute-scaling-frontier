@@ -12,8 +12,7 @@ from typing import Any
 from dotenv import load_dotenv
 
 from src.evaluator import (
-    GSM8K_FINAL_ANSWER_MARKER,
-    evaluate_answer,
+    build_answer_diagnostics,
     extract_last_number,
 )
 from src.prepare_eval_set import DEFAULT_OUTPUT_PATH as DEFAULT_EVAL_PATH
@@ -73,30 +72,6 @@ def final_answer_projection(response: str) -> str:
     """Project free-form math output into the final-answer space for SC voting."""
 
     return extract_last_number(response) or response.strip()
-
-
-def extract_final_marker_answer(response: str) -> str | None:
-    """Extract the numeric answer after the final GSM8K answer marker."""
-
-    if GSM8K_FINAL_ANSWER_MARKER not in response:
-        return None
-    marker_tail = response.rsplit(GSM8K_FINAL_ANSWER_MARKER, maxsplit=1)[-1]
-    return extract_last_number(marker_tail)
-
-
-def build_answer_diagnostics(prediction: str, gold_answer: str) -> dict[str, Any]:
-    """Build exact-match and prompt-compliance diagnostics for one prediction."""
-
-    evaluation = evaluate_answer(prediction, gold_answer)
-    marker_answer = extract_final_marker_answer(prediction)
-    return {
-        "extracted_prediction": evaluation.extracted_prediction,
-        "extracted_gold": evaluation.extracted_gold,
-        "is_correct": evaluation.is_correct,
-        "has_final_marker": GSM8K_FINAL_ANSWER_MARKER in prediction,
-        "extracted_marker_answer": marker_answer,
-        "answer_format_ok": marker_answer is not None,
-    }
 
 
 def _base_raw_row(

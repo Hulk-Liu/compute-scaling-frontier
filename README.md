@@ -1,74 +1,197 @@
 # Compute-Matched Pareto Frontier
 
-> **Status: Work in Progress.** This is a take-home prototype for the Red Hat AI Innovation Team. Sections marked _TBD_ will be filled in as experiments complete.
+> Status: prototype in progress. The local vertical slices for setup, data generation, training preparation, inference-time scaling, and aggregation are working. The full Qwen2.5 LoRA training run and final Pareto plots are still pending.
 
 **中文版本：[README.zh.md](./README.zh.md)**
 
----
-
 ## TL;DR
 
-When you have a fixed compute budget for an LLM-powered system, where should you spend it — on **fine-tuning** a small model, or on **inference-time scaling** at query time? The answer depends on **how many queries you expect to serve**: training is a one-time cost, inference scales with usage. Somewhere there is a break-even point.
+When an LLM system has a fixed compute budget, should that budget go into a one-time fine-tuning run, or into extra inference-time samples per query? The trade-off changes with expected query volume: training cost is paid once, while inference-time scaling cost grows with every served request.
 
-This project finds that point empirically for **Qwen2.5-1.5B-Instruct on GSM8K**, by integrating three Red Hat OSS libraries:
+This project tests that trade-off on **GSM8K** with **Qwen2.5-1.5B-Instruct**, integrating three Red Hat AI Innovation Team libraries:
 
-- **[sdg_hub](https://github.com/Red-Hat-AI-Innovation-Team/sdg_hub)** — generate synthetic training data from a stronger teacher model
-- **[training_hub](https://github.com/Red-Hat-AI-Innovation-Team/training_hub)** — LoRA fine-tune the small student model
-- **[its_hub](https://github.com/Red-Hat-AI-Innovation-Team/its_hub)** — apply Self-Consistency and Best-of-N strategies at inference time
+- **[sdg_hub](https://github.com/Red-Hat-AI-Innovation-Team/sdg_hub)** for synthetic math-reasoning SFT data from a stronger teacher model.
+- **[training_hub](https://github.com/Red-Hat-AI-Innovation-Team/training_hub)** for the planned LoRA fine-tuning path.
+- **[its_hub](https://github.com/Red-Hat-AI-Innovation-Team/its_hub)** for greedy and Self-Consistency inference through an OpenAI-compatible endpoint.
 
-## Headline Result
+The intended final artifact is a Pareto frontier in `(USD cost, accuracy)` space for query volumes `N in {1K, 10K, 100K, 1M}`.
 
-_TBD — to be filled in after experiments complete._
+## Current Result
 
-A Pareto frontier in (USD cost, accuracy) space, with curves for query volumes N ∈ {1K, 10K, 100K, 1M}, and the break-even N\* annotated.
+The final ML result is not ready yet. The table below is smoke-test evidence that the pieces now connect end to end; it should not be read as a benchmark.
 
-## Sections
+| Step | Current smoke | Result |
+| --- | --- | --- |
+| Setup | `bash scripts/verify_setup.sh --live` | Imports and live API checks pass after installing `its-hub[lm]`. |
+| Eval set | `data/eval_gsm8k_50.jsonl` | Deterministic 50-row GSM8K test subset. |
+| Synthetic data | `src.data_generation --n 3` | `sdg_hub.Flow` generated chat-template SFT records with `gpt-4o-mini`. |
+| Data quality | `src.validate_training_data ... --fail-on-mismatch` | Teacher final-answer exact match was `3/3` on the tiny generated set. |
+| Training prep | `src.train_lora --data-path ...` | `training_hub.lora_sft` kwargs are validated in dry-run mode. Local Mac execution is intentionally deferred to Colab. |
+| Greedy inference | `gpt-4o-mini`, `n_eval=3`, budget `1` | Raw JSONL plus aggregation path works, `3/3` exact match. |
+| Self-Consistency | `gpt-4o-mini`, `n_eval=3`, budget `4` | `its_hub.SelfConsistency` path works, `3/3` exact match after projecting votes to final numeric answers. |
 
-- [Problem & Approach](#problem--approach) _(TBD)_
-- [How to Run](#how-to-run) _(TBD)_
-- [Architecture](#architecture) _(TBD)_
-- [Cost Accounting Methodology](#cost-accounting-methodology) _(TBD)_
-- [Results](#results) _(TBD)_
-- [Design Decisions & Scope Boundaries](#design-decisions--scope-boundaries) _(TBD)_
-- [What Worked / What Didn't](#what-worked--what-didnt) _(TBD)_
-- [Other Tools & Why](#other-tools--why) _(TBD)_
-- [What I'd Improve with More Time](#what-id-improve-with-more-time) _(TBD)_
-- [AI-Assisted Development](./AI_ASSISTED_DEV.md)
+One important implementation detail came out of the first Self-Consistency smoke: `its_hub.SelfConsistency()` defaults to voting on the entire stripped response text. For GSM8K this is the wrong semantic space, because four responses can all end in `#### 540` but differ in wording and therefore receive one vote each. The project now passes `consistency_space_projection_func=final_answer_projection`, where `final_answer_projection` reuses the evaluator's final-number extraction. In the latest smoke, response counts are numeric answer votes such as `{"540": 4}` instead of full text strings.
 
----
+There is also one evaluation caveat worth keeping visible: with the tiny default `max_tokens=256`, one smoke response was truncated after deriving the correct answer. Exact match still succeeded because the evaluator extracts the last numeric token, but the full experiment should use a larger `--max-tokens` and monitor malformed final lines.
 
-## Problem & Approach
+## Problem and Approach
 
-_TBD_
+The core question is whether fine-tuning and inference-time scaling compound or substitute for each other under a compute budget.
+
+The planned experiment grid is:
+
+- Models: base Qwen2.5-1.5B-Instruct vs. LoRA-tuned variants.
+- Training sizes: zero-shot baseline plus synthetic SFT sets generated by `sdg_hub`.
+- Inference strategies: greedy, Self-Consistency, and later Best-of-N.
+- Budgets: one sample for greedy, multiple samples for Self-Consistency or Best-of-N.
+- Cost views: total cost at `1K`, `10K`, `100K`, and `1M` expected queries.
+
+The practical hypothesis is that inference-time scaling can be attractive at low query volume, while fine-tuning should become more attractive as traffic grows because its cost is amortized.
 
 ## How to Run
 
-_TBD — see `scripts/verify_setup.sh` for the current smoke-test entrypoint._
+Install dependencies:
+
+```bash
+uv sync
+```
+
+Set `OPENAI_API_KEY` in the shell or in `.env`. The code loads `.env`, and `.env` is ignored by git.
+
+Run setup smoke tests:
+
+```bash
+bash scripts/verify_setup.sh --live
+```
+
+Prepare the deterministic eval subset:
+
+```bash
+.venv/bin/python -m src.prepare_eval_set --n 50 --output data/eval_gsm8k_50.jsonl
+```
+
+Generate and validate a tiny synthetic training set:
+
+```bash
+.venv/bin/python -m src.data_generation --n 3 --output data/_smoke_augmented_train_3.jsonl
+.venv/bin/python -m src.validate_training_data data/_smoke_augmented_train_3.jsonl --fail-on-mismatch
+```
+
+Dry-run the LoRA training call that will run in Colab:
+
+```bash
+.venv/bin/python -m src.train_lora --data-path data/_smoke_augmented_train_3.jsonl
+```
+
+Run tiny inference/eval smoke tests through the OpenAI-compatible `its_hub` path:
+
+```bash
+.venv/bin/python -m src.run_its_experiment \
+  --model gpt-4o-mini \
+  --strategy greedy \
+  --n-eval 3 \
+  --output results/raw/_smoke_gpt4omini_greedy.jsonl
+
+.venv/bin/python -m src.run_its_experiment \
+  --model gpt-4o-mini \
+  --strategy sc \
+  --budget 4 \
+  --n-eval 3 \
+  --output results/raw/_smoke_gpt4omini_sc4.jsonl
+```
+
+Aggregate one raw result file:
+
+```bash
+.venv/bin/python -m src.aggregate_results results/raw/_smoke_gpt4omini_sc4.jsonl \
+  --train-size 0 \
+  --strategy sc \
+  --budget 4 \
+  --model-tokens-per-sample 0 \
+  --output results/_smoke_gpt4omini_sc4.csv
+```
+
+Run unit tests:
+
+```bash
+.venv/bin/python -m pytest
+```
+
+When Qwen is served through vLLM or another OpenAI-compatible server, the same inference script should switch by changing only `--endpoint` and `--model`:
+
+```bash
+.venv/bin/python -m src.run_its_experiment \
+  --endpoint http://localhost:8000/v1 \
+  --model Qwen/Qwen2.5-1.5B-Instruct \
+  --strategy sc \
+  --budget 4 \
+  --n-eval 50 \
+  --output results/raw/qwen_base_sc4.jsonl
+```
 
 ## Architecture
 
-_TBD_
+The current prototype is intentionally script-first:
 
-## Cost Accounting Methodology
+1. `src.prepare_eval_set` samples a deterministic GSM8K evaluation subset.
+2. `src.data_generation` loads GSM8K train rows and runs a custom `sdg_hub` flow.
+3. `src.validate_training_data` checks generated teacher answers against GSM8K gold answers.
+4. `src.train_lora` validates chat-template data and prepares a `training_hub.lora_sft` call.
+5. `src.run_its_experiment` runs greedy or Self-Consistency inference via `its_hub`.
+6. `src.aggregate_results` computes exact-match accuracy and cost columns.
+7. Final plotting is still pending.
 
-_TBD — assumptions live in `prices.yaml`._
+## Cost Accounting
 
-## Results
+All cost assumptions live in `prices.yaml` and are read by `src.cost_accounting`.
 
-_TBD_
+The current model separates:
 
-## Design Decisions & Scope Boundaries
+- Synthetic data generation cost per example.
+- One-time training cost from generated-example count plus GPU hours.
+- Per-query inference cost from model tokens, strategy budget, and optional judge tokens.
+- Total serving cost as `training_cost + query_count * inference_cost_per_query`.
 
-_TBD_
+This is deliberately simple, but it makes the economic break-even point explicit and easy to change during review.
 
-## What Worked / What Didn't
+## Design Decisions and Scope
 
-_TBD_
+- **OpenAI-compatible abstraction first.** The same `its_hub.OpenAICompatibleLanguageModel` path works for OpenAI smoke tests today and Qwen/vLLM later.
+- **Final-answer projection for math Self-Consistency.** Voting on whole text is too brittle for GSM8K, so the project votes on the extracted final number.
+- **Dry-run training locally.** `training_hub`'s LoRA path uses the Unsloth backend, which is not available on this Mac setup. The local script validates data and kwargs; actual execution is reserved for Colab Pro.
+- **Small eval first.** The project uses tiny `n_eval=3` live smokes while developing to keep cost and debugging tight, then will scale to the 50-row fixed subset.
+- **Commit final evidence, ignore raw noise.** Raw per-example outputs under `results/raw/*.jsonl` are ignored, while final aggregate CSVs and figures should be committed.
 
-## Other Tools & Why
+## What Worked and What Did Not
 
-_TBD_
+Worked:
 
-## What I'd Improve with More Time
+- `sdg_hub.Flow` can run a custom GSM8K teacher-response flow with `gpt-4o-mini`.
+- `its_hub` greedy and Self-Consistency paths work once installed with the `[lm]` extra.
+- The evaluator, aggregation code, and cost-accounting tests make the smoke outputs reviewable.
 
-_TBD_
+Did not work cleanly:
+
+- Installing `its-hub` without `[lm]` silently omits the OpenAI-compatible LM export. The dependency is now `its-hub[lm]>=1.0.0`.
+- A smoke test that only imports top-level `its_hub` is not enough; the live smoke must actually instantiate the LM path used by the project.
+- A live `sdg_hub` smoke that only calls OpenAI directly is misleading; it now runs a tiny `sdg_hub.Flow`.
+- Local Mac LoRA execution is blocked by the Unsloth backend. This is why training is routed to Colab Pro.
+- Low `max_tokens` can truncate math outputs and make "last number" extraction look better than strict final-line compliance.
+
+Detailed bilingual notes on library improvement opportunities are in [docs/library_improvement_ideas.md](./docs/library_improvement_ideas.md).
+
+## Other Tools
+
+- `uv` for reproducible local dependency management.
+- `pytest` for focused unit tests around data shape, evaluation, aggregation, and training-call preparation.
+- Hugging Face `datasets` for GSM8K loading.
+- OpenAI `gpt-4o-mini` as the cheap teacher and early smoke model.
+- Colab Pro and vLLM are planned for Qwen training and serving.
+
+## Next Steps
+
+1. Run the LoRA training command in Colab Pro on a larger generated SFT set.
+2. Serve base Qwen and the LoRA adapter through an OpenAI-compatible endpoint.
+3. Run the full inference grid for greedy, Self-Consistency, and Best-of-N.
+4. Aggregate final results, generate Pareto figures, and commit `results/aggregated.csv` plus final plots.
+5. Finish the [AI-assisted development write-up](./AI_ASSISTED_DEV.md) with concrete examples from the planning, review, and validation loop.

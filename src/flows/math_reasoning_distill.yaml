@@ -1,0 +1,47 @@
+metadata:
+  id: math-reasoning-distill
+  name: Math Reasoning Distillation Flow
+  description: Distill GSM8K examples into chat-template supervised fine-tuning records.
+  version: "0.1.0"
+  author: Yuhao Liu
+  license: Apache-2.0
+  dataset_requirements:
+    required_columns:
+      - source_index
+      - question
+      - answer
+    description: GSM8K-style rows with question and gold answer text.
+  output_columns:
+    - source_index
+    - question
+    - answer
+    - teacher_response_content
+
+blocks:
+  - block_type: PromptBuilderBlock
+    block_config:
+      block_name: build_teacher_prompt
+      input_cols:
+        question: question
+        answer: gold_answer
+      output_cols: teacher_prompt
+      prompt_config_path: prompts/math_reasoning_distill.yaml
+      format_as_messages: true
+
+  - block_type: LLMChatBlock
+    block_config:
+      block_name: generate_teacher_response
+      input_cols: teacher_prompt
+      output_cols: raw_teacher_response
+      temperature: 0.2
+      max_completion_tokens: 512
+      async_mode: false
+
+  - block_type: LLMResponseExtractorBlock
+    block_config:
+      block_name: extract_teacher_response
+      input_cols: raw_teacher_response
+      output_cols: teacher_response_content
+      field_prefix: teacher_response_
+      extract_content: true
+      expand_lists: true

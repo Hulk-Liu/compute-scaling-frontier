@@ -32,7 +32,7 @@ The final ML result is not ready yet. The table below is smoke-test evidence tha
 
 One important implementation detail came out of the first Self-Consistency smoke: `its_hub.SelfConsistency()` defaults to voting on the entire stripped response text. For GSM8K this is the wrong semantic space, because four responses can all end in `#### 540` but differ in wording and therefore receive one vote each. The project now passes `consistency_space_projection_func=final_answer_projection`, where `final_answer_projection` reuses the evaluator's final-number extraction. In the latest smoke, response counts are numeric answer votes such as `{"540": 4}` instead of full text strings.
 
-There is also one evaluation caveat worth keeping visible: with the tiny default `max_tokens=256`, one smoke response was truncated after deriving the correct answer. Exact match still succeeded because the evaluator extracts the last numeric token, but the full experiment should use a larger `--max-tokens` and monitor malformed final lines.
+There is also one evaluation caveat worth keeping visible: an early smoke run with `max_tokens=256` truncated one response after deriving the correct answer. Exact match still succeeded because the evaluator extracts the last numeric token, but the final answer line was missing. The default is now `max_tokens=512`, and the full experiment should monitor malformed final lines.
 
 To make that visible in result tables, aggregation now includes answer-format diagnostics such as `has_final_marker_rate`, `answer_format_ok_rate`, `missing_final_marker_count`, and `malformed_final_marker_count`.
 
@@ -178,7 +178,7 @@ Did not work cleanly:
 - A smoke test that only imports top-level `its_hub` is not enough; the live smoke must actually instantiate the LM path used by the project.
 - A live `sdg_hub` smoke that only calls OpenAI directly is misleading; it now runs a tiny `sdg_hub.Flow`.
 - Local Mac LoRA execution is blocked by the Unsloth backend. This is why training is routed to Colab Pro.
-- Low `max_tokens` can truncate math outputs and make "last number" extraction look better than strict final-line compliance.
+- Low `max_tokens` can truncate math outputs and make "last number" extraction look better than strict final-line compliance. The inference default is now `512` after a `256`-token smoke exposed this issue.
 
 Detailed bilingual notes on library improvement opportunities are in [docs/library_improvement_ideas.md](./docs/library_improvement_ideas.md).
 

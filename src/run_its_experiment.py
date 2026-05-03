@@ -21,7 +21,7 @@ from src.prepare_eval_set import DEFAULT_OUTPUT_PATH as DEFAULT_EVAL_PATH
 DEFAULT_OUTPUT_PATH = Path("results/raw/_smoke_gpt4omini_greedy.jsonl")
 DEFAULT_MODEL = "gpt-4o-mini"
 DEFAULT_ENDPOINT = "https://api.openai.com/v1"
-DEFAULT_MAX_TOKENS = 256
+DEFAULT_MAX_TOKENS = 512
 DEFAULT_BUDGET = 1
 
 

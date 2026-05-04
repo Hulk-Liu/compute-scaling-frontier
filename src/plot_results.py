@@ -25,6 +25,14 @@ QUERY_COUNT_COLUMNS = (
     ("100K", "total_cost_usd_at_100000"),
     ("1M", "total_cost_usd_at_1000000"),
 )
+STRATEGY_ORDER = ("Greedy", "SC@4", "SC@8", "BoN@4")
+STRATEGY_COLORS = {
+    "Greedy": "#3B82F6",
+    "SC@4": "#10B981",
+    "SC@8": "#F59E0B",
+    "BoN@4": "#8B5CF6",
+}
+TRAIN_SIZE_MARKERS = {0: "o", 100: "s", 500: "^"}
 
 
 def read_aggregate_rows(path: Path | str) -> list[dict[str, Any]]:
@@ -57,7 +65,18 @@ def strategy_label(row: dict[str, Any]) -> str:
         return "Greedy"
     if row["strategy"] == "sc":
         return f"SC@{row['budget']}"
+    if row["strategy"] == "bon":
+        return f"BoN@{row['budget']}"
     return f"{row['strategy']}@{row['budget']}"
+
+
+def ordered_strategy_labels(rows: list[dict[str, Any]]) -> list[str]:
+    """Return strategy labels in the preferred display order."""
+
+    labels = {strategy_label(row) for row in rows}
+    ordered = [label for label in STRATEGY_ORDER if label in labels]
+    ordered.extend(sorted(labels - set(ordered)))
+    return ordered
 
 
 def build_metric_matrix(
@@ -81,7 +100,7 @@ def plot_accuracy_heatmap(rows: list[dict[str, Any]], output_path: Path) -> None
     """Plot accuracy by train size and inference strategy."""
 
     train_sizes = sorted({row["train_size"] for row in rows})
-    labels = ["Greedy", "SC@4", "SC@8"]
+    labels = ordered_strategy_labels(rows)
     matrix = build_metric_matrix(rows, "accuracy", train_sizes, labels)
 
     fig, ax = plt.subplots(figsize=(8, 4.8))
@@ -119,9 +138,9 @@ def plot_accuracy_heatmap(rows: list[dict[str, Any]], output_path: Path) -> None
 def plot_cost_accuracy(rows: list[dict[str, Any]], output_path: Path) -> None:
     """Plot accuracy against current cost accounting columns."""
 
-    labels = ["Greedy", "SC@4", "SC@8"]
-    colors = {"Greedy": "#3B82F6", "SC@4": "#10B981", "SC@8": "#F59E0B"}
-    markers = {0: "o", 100: "s", 500: "^"}
+    labels = ordered_strategy_labels(rows)
+    colors = {label: STRATEGY_COLORS[label] for label in labels}
+    markers = TRAIN_SIZE_MARKERS
 
     fig, ax = plt.subplots(figsize=(8, 5))
     for label in labels:
@@ -196,9 +215,9 @@ def train_size_legend_handles(markers: dict[int, str]) -> list[Line2D]:
 def plot_cost_accuracy_by_volume(rows: list[dict[str, Any]], output_path: Path) -> None:
     """Plot accuracy against total cost at several query volumes."""
 
-    labels = ["Greedy", "SC@4", "SC@8"]
-    colors = {"Greedy": "#3B82F6", "SC@4": "#10B981", "SC@8": "#F59E0B"}
-    markers = {0: "o", 100: "s", 500: "^"}
+    labels = ordered_strategy_labels(rows)
+    colors = {label: STRATEGY_COLORS[label] for label in labels}
+    markers = TRAIN_SIZE_MARKERS
 
     fig, axes = plt.subplots(
         len(QUERY_COUNT_COLUMNS),

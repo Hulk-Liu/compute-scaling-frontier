@@ -5,6 +5,7 @@ from pathlib import Path
 
 from src.plot_results import (
     build_metric_matrix,
+    ordered_strategy_labels,
     read_aggregate_rows,
     strategy_label,
 )
@@ -14,6 +15,16 @@ class PlotResultsTests(unittest.TestCase):
     def test_strategy_label_formats_budgeted_sc(self):
         self.assertEqual(strategy_label({"strategy": "greedy", "budget": 1}), "Greedy")
         self.assertEqual(strategy_label({"strategy": "sc", "budget": 8}), "SC@8")
+        self.assertEqual(strategy_label({"strategy": "bon", "budget": 4}), "BoN@4")
+
+    def test_ordered_strategy_labels_puts_bon_after_required_strategies(self):
+        rows = [
+            {"strategy": "bon", "budget": 4},
+            {"strategy": "greedy", "budget": 1},
+            {"strategy": "sc", "budget": 8},
+        ]
+
+        self.assertEqual(ordered_strategy_labels(rows), ["Greedy", "SC@8", "BoN@4"])
 
     def test_build_metric_matrix_orders_rows_and_columns(self):
         rows = [

@@ -16,7 +16,11 @@ from src.cost_accounting import DEFAULT_PRICES_PATH, load_prices
 from src.prepare_eval_set import DEFAULT_OUTPUT_PATH as DEFAULT_EVAL_PATH
 from src.run_its_experiment import (
     DEFAULT_MAX_TOKENS,
+    DEFAULT_JUDGE_ENDPOINT,
+    DEFAULT_JUDGE_MAX_TOKENS,
+    DEFAULT_JUDGE_MODEL,
     read_eval_records,
+    run_best_of_n_openai_compatible,
     run_greedy_openai_compatible,
     run_self_consistency_openai_compatible,
     write_jsonl,
@@ -44,6 +48,7 @@ class StrategySpec:
 
     name: str
     budget: int
+    judge_model: str | None = None
 
 
 def default_model_variants(
@@ -77,14 +82,22 @@ def default_model_variants(
     ]
 
 
-def default_strategy_specs() -> list[StrategySpec]:
+def default_strategy_specs(
+    include_bon4: bool = False,
+    bon_judge_model: str = DEFAULT_JUDGE_MODEL,
+) -> list[StrategySpec]:
     """Build the required inference strategy list."""
 
-    return [
+    strategies = [
         StrategySpec(name="greedy", budget=1),
         StrategySpec(name="sc", budget=4),
         StrategySpec(name="sc", budget=8),
     ]
+    if include_bon4:
+        strategies.append(
+            StrategySpec(name="bon", budget=4, judge_model=bon_judge_model)
+        )
+    return strategies
 
 
 def cell_slug(model: ModelVariant, strategy: StrategySpec) -> str:
@@ -104,6 +117,9 @@ async def run_grid_cell(
     endpoint: str,
     api_key: str,
     max_tokens: int,
+    judge_endpoint: str,
+    judge_api_key: str,
+    judge_max_tokens: int,
 ) -> list[dict[str, Any]]:
     """Run one model/strategy cell and return raw result rows."""
 
@@ -124,6 +140,21 @@ async def run_grid_cell(
             budget=strategy.budget,
             max_tokens=max_tokens,
         )
+    if strategy.name == "bon":
+        if strategy.judge_model is None:
+            raise ValueError("Best-of-N strategy requires a judge model")
+        return await run_best_of_n_openai_compatible(
+            eval_rows=eval_rows,
+            model=model.model_id,
+            endpoint=endpoint,
+            api_key=api_key,
+            budget=strategy.budget,
+            judge_model=strategy.judge_model,
+            judge_endpoint=judge_endpoint,
+            judge_api_key=judge_api_key,
+            max_tokens=max_tokens,
+            judge_max_tokens=judge_max_tokens,
+        )
     raise ValueError(f"Unsupported strategy: {strategy.name}")
 
 
@@ -138,6 +169,9 @@ async def run_eval_grid(
     output_csv: Path,
     model_tokens_per_sample: int,
     max_tokens: int,
+    judge_endpoint: str,
+    judge_api_key: str,
+    judge_max_tokens: int,
     resume: bool,
     dry_run: bool,
 ) -> list[dict[str, Any]]:
@@ -167,6 +201,9 @@ async def run_eval_grid(
                     endpoint=endpoint,
                     api_key=api_key,
                     max_tokens=max_tokens,
+                    judge_endpoint=judge_endpoint,
+                    judge_api_key=judge_api_key,
+                    judge_max_tokens=judge_max_tokens,
                 )
                 write_jsonl(raw_rows, raw_path)
                 print(f"[grid] wrote {len(raw_rows)} raw rows to {raw_path}")
@@ -180,6 +217,7 @@ async def run_eval_grid(
                     budget=strategy.budget,
                     train_gpu_hours=model.train_gpu_hours,
                     model_tokens_per_sample=model_tokens_per_sample,
+                    judge_model=strategy.judge_model,
                 )
             )
 
@@ -202,6 +240,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--train-gpu-hours-n500", type=float, default=0.125)
     parser.add_argument("--model-tokens-per-sample", type=int, default=0)
     parser.add_argument("--max-tokens", type=int, default=DEFAULT_MAX_TOKENS)
+    parser.add_argument(
+        "--include-bon4",
+        action="store_true",
+        help="Add optional judge-assisted Best-of-N @4 cells to the grid.",
+    )
+    parser.add_argument("--judge-model", default=DEFAULT_JUDGE_MODEL)
+    parser.add_argument("--judge-endpoint", default=DEFAULT_JUDGE_ENDPOINT)
+    parser.add_argument("--judge-api-key-env", default="JUDGE_OPENAI_API_KEY")
+    parser.add_argument("--judge-max-tokens", type=int, default=DEFAULT_JUDGE_MAX_TOKENS)
     parser.add_argument("--raw-dir", type=Path, default=DEFAULT_RAW_DIR)
     parser.add_argument("--prices", type=Path, default=DEFAULT_PRICES_PATH)
     parser.add_argument("--output", type=Path, default=DEFAULT_AGGREGATED_PATH)
@@ -225,6 +272,11 @@ def main() -> int:
     api_key = os.environ.get(args.api_key_env)
     if not api_key and not args.dry_run:
         raise RuntimeError(f"{args.api_key_env} must be set for eval grid runs")
+    judge_api_key = os.environ.get(args.judge_api_key_env)
+    if args.include_bon4 and not judge_api_key and not args.dry_run:
+        raise RuntimeError(
+            f"{args.judge_api_key_env} must be set for Best-of-N judge calls"
+        )
 
     eval_rows = read_eval_records(args.eval_path, n_eval=args.n_eval)
     models = default_model_variants(
@@ -234,7 +286,10 @@ def main() -> int:
         train_gpu_hours_n100=args.train_gpu_hours_n100,
         train_gpu_hours_n500=args.train_gpu_hours_n500,
     )
-    strategies = default_strategy_specs()
+    strategies = default_strategy_specs(
+        include_bon4=args.include_bon4,
+        bon_judge_model=args.judge_model,
+    )
     prices = load_prices(args.prices)
 
     asyncio.run(
@@ -249,6 +304,9 @@ def main() -> int:
             output_csv=args.output,
             model_tokens_per_sample=args.model_tokens_per_sample,
             max_tokens=args.max_tokens,
+            judge_endpoint=args.judge_endpoint,
+            judge_api_key=judge_api_key or "",
+            judge_max_tokens=args.judge_max_tokens,
             resume=args.resume,
             dry_run=args.dry_run,
         )

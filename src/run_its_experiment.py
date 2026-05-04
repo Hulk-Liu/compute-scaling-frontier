@@ -23,6 +23,22 @@ DEFAULT_MODEL = "gpt-4o-mini"
 DEFAULT_ENDPOINT = "https://api.openai.com/v1"
 DEFAULT_MAX_TOKENS = 512
 DEFAULT_BUDGET = 1
+DEFAULT_JUDGE_MODEL = "gpt-4o-mini"
+DEFAULT_JUDGE_ENDPOINT = "https://api.openai.com/v1"
+DEFAULT_JUDGE_MAX_TOKENS = 32
+MATH_JUDGE_PROMPT = """You are judging one candidate answer to a grade-school math problem.
+Score the assistant response from 0 to 10.
+
+Use these criteria:
+- Mathematical correctness and consistency of reasoning.
+- Whether the final answer follows the requested `#### <number>` format.
+- Penalize unsupported shortcuts, arithmetic mistakes, and missing final answers.
+
+Return only a JSON object with this exact shape:
+{{"score": <number>}}
+
+Conversation:
+{conversation}"""
 
 
 def read_eval_records(path: Path | str, n_eval: int | None = None) -> list[dict[str, Any]]:
@@ -203,6 +219,77 @@ async def run_self_consistency_openai_compatible(
     return raw_rows
 
 
+async def run_best_of_n_openai_compatible(
+    eval_rows: list[dict[str, Any]],
+    model: str,
+    endpoint: str,
+    api_key: str,
+    budget: int,
+    judge_model: str,
+    judge_endpoint: str,
+    judge_api_key: str,
+    max_tokens: int = DEFAULT_MAX_TOKENS,
+    judge_max_tokens: int = DEFAULT_JUDGE_MAX_TOKENS,
+) -> list[dict[str, Any]]:
+    """Run judge-assisted Best-of-N through its_hub."""
+
+    if budget <= 1:
+        raise ValueError("Best-of-N budget must be greater than 1")
+
+    from its_hub import BestOfN, LLMJudge, OpenAICompatibleLanguageModel
+
+    lm = OpenAICompatibleLanguageModel(
+        endpoint=endpoint,
+        api_key=api_key,
+        model_name=model,
+        max_tokens=max_tokens,
+        temperature=0.7,
+        max_concurrency=budget,
+    )
+    judge_lm = OpenAICompatibleLanguageModel(
+        endpoint=judge_endpoint,
+        api_key=judge_api_key,
+        model_name=judge_model,
+        max_tokens=judge_max_tokens,
+        temperature=0.0,
+        max_concurrency=budget,
+    )
+    algorithm = BestOfN(orm=LLMJudge(judge_lm, judge_prompt=MATH_JUDGE_PROMPT))
+
+    raw_rows = []
+    try:
+        for eval_row in eval_rows:
+            prompt = build_math_prompt(eval_row["question"])
+            result = await algorithm.ainfer(
+                lm,
+                prompt,
+                budget=budget,
+                return_response_only=False,
+            )
+            selected = result.the_one
+            raw_rows.append(
+                {
+                    **_base_raw_row(
+                        eval_row=eval_row,
+                        prediction=_response_content(selected),
+                        model=model,
+                        strategy="bon",
+                        budget=budget,
+                        raw_response=selected,
+                    ),
+                    "all_responses": result.responses,
+                    "scores": result.scores,
+                    "selected_index": result.selected_index,
+                    "judge_model": judge_model,
+                }
+            )
+    finally:
+        await lm.close()
+        await judge_lm.close()
+
+    return raw_rows
+
+
 def write_jsonl(records: list[dict[str, Any]], output_path: Path | str) -> None:
     """Write raw result records as JSONL."""
 
@@ -219,9 +306,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--n-eval", type=int, default=3)
     parser.add_argument("--model", default=DEFAULT_MODEL)
     parser.add_argument("--endpoint", default=DEFAULT_ENDPOINT)
-    parser.add_argument("--strategy", choices=["greedy", "sc"], default="greedy")
+    parser.add_argument("--api-key-env", default="OPENAI_API_KEY")
+    parser.add_argument("--strategy", choices=["greedy", "sc", "bon"], default="greedy")
     parser.add_argument("--budget", type=int, default=DEFAULT_BUDGET)
     parser.add_argument("--max-tokens", type=int, default=DEFAULT_MAX_TOKENS)
+    parser.add_argument("--judge-model", default=DEFAULT_JUDGE_MODEL)
+    parser.add_argument("--judge-endpoint", default=DEFAULT_JUDGE_ENDPOINT)
+    parser.add_argument("--judge-api-key-env", default="JUDGE_OPENAI_API_KEY")
+    parser.add_argument("--judge-max-tokens", type=int, default=DEFAULT_JUDGE_MAX_TOKENS)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT_PATH)
     return parser.parse_args()
 
@@ -229,9 +321,9 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     load_dotenv()
     args = parse_args()
-    api_key = os.environ.get("OPENAI_API_KEY")
+    api_key = os.environ.get(args.api_key_env)
     if not api_key:
-        raise RuntimeError("OPENAI_API_KEY must be set for this smoke inference step")
+        raise RuntimeError(f"{args.api_key_env} must be set for this inference step")
 
     eval_rows = read_eval_records(args.eval_path, n_eval=args.n_eval)
     if args.strategy == "greedy":
@@ -244,7 +336,7 @@ def main() -> int:
                 max_tokens=args.max_tokens,
             )
         )
-    else:
+    elif args.strategy == "sc":
         raw_rows = asyncio.run(
             run_self_consistency_openai_compatible(
                 eval_rows=eval_rows,
@@ -253,6 +345,26 @@ def main() -> int:
                 api_key=api_key,
                 budget=args.budget,
                 max_tokens=args.max_tokens,
+            )
+        )
+    else:
+        judge_api_key = os.environ.get(args.judge_api_key_env)
+        if not judge_api_key:
+            raise RuntimeError(
+                f"{args.judge_api_key_env} must be set for Best-of-N judge calls"
+            )
+        raw_rows = asyncio.run(
+            run_best_of_n_openai_compatible(
+                eval_rows=eval_rows,
+                model=args.model,
+                endpoint=args.endpoint,
+                api_key=api_key,
+                budget=args.budget,
+                judge_model=args.judge_model,
+                judge_endpoint=args.judge_endpoint,
+                judge_api_key=judge_api_key,
+                max_tokens=args.max_tokens,
+                judge_max_tokens=args.judge_max_tokens,
             )
         )
     write_jsonl(raw_rows, args.output)

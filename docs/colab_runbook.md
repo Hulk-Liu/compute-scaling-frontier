@@ -676,4 +676,83 @@ ls -lh /content/results_final_grid.tar.gz
 
 Download `/content/results_final_grid.tar.gz` from the Colab file browser, then unpack it in the local repo and commit `results/aggregated.csv`, final figures, and final-grid raw JSONL outputs. Smoke JSONL outputs remain ignored by git.
 
-Best-of-N @4 is optional and should only be added after the required grid is complete.
+## Optional: Best-of-N @4
+
+Best-of-N @4 is optional and should only be added after the required grid is complete. This path uses `its_hub.BestOfN` with `its_hub.LLMJudge`, so it is **judge-assisted reranking**, not pure small-model inference-time scaling.
+
+Keep the vLLM server running from the final grid step. Configure separate API keys so local Qwen generation uses the vLLM token, while the judge uses the real OpenAI key.
+
+```python
+from google.colab import userdata
+import os
+
+os.environ["VLLM_API_KEY"] = "local-vllm"
+os.environ["JUDGE_OPENAI_API_KEY"] = userdata.get("OPENAI_API_KEY")
+
+print("VLLM_API_KEY set:", bool(os.environ.get("VLLM_API_KEY")))
+print("JUDGE_OPENAI_API_KEY set:", bool(os.environ.get("JUDGE_OPENAI_API_KEY")))
+```
+
+Run a tiny BoN smoke first:
+
+```bash
+%%bash
+set -euo pipefail
+cd /content/red-hat-ai-take-home
+
+.venv/bin/python -m src.run_its_experiment \
+  --endpoint http://127.0.0.1:8000/v1 \
+  --api-key-env VLLM_API_KEY \
+  --model qwen-gsm8k-lora-n500 \
+  --strategy bon \
+  --budget 4 \
+  --n-eval 3 \
+  --judge-model gpt-4o-mini \
+  --judge-api-key-env JUDGE_OPENAI_API_KEY \
+  --output results/raw/_smoke_qwen_lora_n500_bon4.jsonl
+
+.venv/bin/python -m src.aggregate_results \
+  results/raw/_smoke_qwen_lora_n500_bon4.jsonl \
+  --train-size 500 \
+  --strategy bon \
+  --budget 4 \
+  --train-gpu-hours 0.125 \
+  --model-tokens-per-sample 0 \
+  --judge-model gpt-4o-mini \
+  --output results/_smoke_qwen_lora_n500_bon4.csv
+
+sed -n '1,2p' results/_smoke_qwen_lora_n500_bon4.csv
+```
+
+If the smoke passes, run a separate BoN aggregate so the required grid remains intact. `--resume` reuses the existing greedy/SC raw files and only generates missing BoN cells.
+
+```bash
+%%bash
+set -euo pipefail
+cd /content/red-hat-ai-take-home
+
+.venv/bin/python -m src.run_eval_grid \
+  --endpoint http://127.0.0.1:8000/v1 \
+  --api-key-env VLLM_API_KEY \
+  --include-bon4 \
+  --judge-model gpt-4o-mini \
+  --judge-api-key-env JUDGE_OPENAI_API_KEY \
+  --n-eval 50 \
+  --resume \
+  --output results/aggregated_with_bon.csv
+
+.venv/bin/python -m src.estimate_serving_costs \
+  --aggregate results/aggregated_with_bon.csv \
+  --raw-dir results/raw \
+  --token-method auto \
+  --output results/aggregated_with_bon.csv
+
+.venv/bin/python -m src.plot_results \
+  --input results/aggregated_with_bon.csv \
+  --output-dir results/figures_with_bon
+
+sed -n '1,20p' results/aggregated_with_bon.csv
+ls -lh results/figures_with_bon
+```
+
+Only fold BoN into the main README if it changes the story. If it does not beat base SC@4, keep it as a short optional finding and emphasize that a stronger verifier or task-specific reward model would be needed.

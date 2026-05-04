@@ -21,7 +21,7 @@ from src.cost_accounting import (
     load_prices,
     total_serving_cost_usd,
 )
-from src.run_its_experiment import build_math_prompt, _response_content
+from src.run_its_experiment import MATH_JUDGE_PROMPT, build_math_prompt, _response_content
 
 
 DEFAULT_AGGREGATE_PATH = Path("results/aggregated.csv")
@@ -152,6 +152,32 @@ def estimate_model_tokens_per_sample(
     return int(round(mean(sample_token_counts)))
 
 
+def estimate_bon_judge_tokens_per_query(
+    raw_rows: list[dict[str, Any]],
+    counter: TokenCounter,
+    judge_output_tokens_per_score: int = 8,
+) -> tuple[int, int]:
+    """Estimate total judge input/output tokens for one BoN query."""
+
+    input_counts: list[int] = []
+    output_counts: list[int] = []
+    for raw_row in raw_rows:
+        prompt = build_math_prompt(str(raw_row["question"]))
+        query_input_tokens = 0
+        query_output_tokens = 0
+        for response in candidate_responses(raw_row):
+            conversation = f"user: {prompt}\nassistant: {response}"
+            judge_prompt = MATH_JUDGE_PROMPT.format(conversation=conversation)
+            query_input_tokens += counter.count(judge_prompt)
+            query_output_tokens += judge_output_tokens_per_score
+        input_counts.append(query_input_tokens)
+        output_counts.append(query_output_tokens)
+
+    if not input_counts:
+        raise ValueError("Cannot estimate judge tokens from empty raw rows")
+    return int(round(mean(input_counts))), int(round(mean(output_counts)))
+
+
 def update_row_costs(
     row: dict[str, Any],
     raw_rows: list[dict[str, Any]],
@@ -165,16 +191,28 @@ def update_row_costs(
     budget = int(row["budget"])
     train_cost = float(row["train_cost_usd"])
     tokens_per_sample = estimate_model_tokens_per_sample(raw_rows, counter)
+    judge_model = row.get("judge_model") or raw_rows[0].get("judge_model") or None
+    judge_input_tokens = int(row.get("judge_input_tokens") or 0)
+    judge_output_tokens = int(row.get("judge_output_tokens") or 0)
+    if row.get("strategy") == "bon" and judge_model:
+        judge_input_tokens, judge_output_tokens = estimate_bon_judge_tokens_per_query(
+            raw_rows,
+            counter,
+        )
+
     inference_cost = inference_cost_per_query_usd(
         prices,
         budget=budget,
         model_tokens_per_sample=tokens_per_sample,
-        judge_model=row.get("judge_model") or None,
-        judge_input_tokens=int(row.get("judge_input_tokens") or 0),
-        judge_output_tokens=int(row.get("judge_output_tokens") or 0),
+        judge_model=judge_model,
+        judge_input_tokens=judge_input_tokens,
+        judge_output_tokens=judge_output_tokens,
     )
 
     updated["model_tokens_per_sample"] = tokens_per_sample
+    updated["judge_model"] = judge_model or ""
+    updated["judge_input_tokens"] = judge_input_tokens
+    updated["judge_output_tokens"] = judge_output_tokens
     updated["token_estimation_method"] = counter.method_name
     updated["inference_cost_per_query_usd"] = round(inference_cost.total_usd, 8)
     for query_count in query_counts:

@@ -31,6 +31,18 @@ class RunEvalGridTests(unittest.TestCase):
             [("greedy", 1), ("sc", 4), ("sc", 8)],
         )
 
+    def test_optional_grid_can_include_bon4(self):
+        strategies = default_strategy_specs(
+            include_bon4=True,
+            bon_judge_model="gpt-4o-mini",
+        )
+
+        self.assertEqual(
+            [(strategy.name, strategy.budget) for strategy in strategies],
+            [("greedy", 1), ("sc", 4), ("sc", 8), ("bon", 4)],
+        )
+        self.assertEqual(strategies[-1].judge_model, "gpt-4o-mini")
+
     def test_cell_slug_includes_model_variant_and_budget(self):
         model = ModelVariant(
             name="lora_n500",
@@ -46,6 +58,10 @@ class RunEvalGridTests(unittest.TestCase):
         self.assertEqual(
             cell_slug(model, StrategySpec(name="sc", budget=8)),
             "qwen_lora_n500_sc8",
+        )
+        self.assertEqual(
+            cell_slug(model, StrategySpec(name="bon", budget=4)),
+            "qwen_lora_n500_bon4",
         )
 
     def test_resume_raw_file_shape_matches_aggregate_input(self):
@@ -94,6 +110,9 @@ class RunEvalGridTests(unittest.TestCase):
                     output_csv=output,
                     model_tokens_per_sample=0,
                     max_tokens=16,
+                    judge_endpoint="https://api.openai.com/v1",
+                    judge_api_key="unused",
+                    judge_max_tokens=16,
                     resume=False,
                     dry_run=True,
                 )

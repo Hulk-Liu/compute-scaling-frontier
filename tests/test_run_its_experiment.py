@@ -3,6 +3,7 @@ import unittest
 from pathlib import Path
 
 from src.run_its_experiment import (
+    MATH_JUDGE_PROMPT,
     _base_raw_row,
     _response_content,
     build_math_prompt,
@@ -18,6 +19,10 @@ class RunITSExperimentTests(unittest.TestCase):
 
         self.assertIn("What is 7 + 5?", prompt)
         self.assertIn("#### <number>", prompt)
+
+    def test_math_judge_prompt_has_conversation_placeholder_and_json_contract(self):
+        self.assertIn("{conversation}", MATH_JUDGE_PROMPT)
+        self.assertIn('{"score": <number>}', MATH_JUDGE_PROMPT)
 
     def test_response_content_handles_none(self):
         self.assertEqual(_response_content({"content": None}), "")

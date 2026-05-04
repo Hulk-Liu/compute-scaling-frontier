@@ -5,6 +5,7 @@ from typing import Any
 from src.estimate_serving_costs import (
     CharacterHeuristicCounter,
     candidate_responses,
+    estimate_bon_judge_tokens_per_query,
     raw_path_for_row,
     update_row_costs,
 )
@@ -105,6 +106,26 @@ class EstimateServingCostsTests(unittest.TestCase):
             updated["total_cost_usd_at_1000"],
             0.112 + 1_000 * 4 * 20 / 1_000_000 * 0.18,
         )
+
+    def test_estimate_bon_judge_tokens_counts_each_candidate(self):
+        raw_rows = [
+            {
+                "question": "What is 1 + 1?",
+                "all_responses": [
+                    {"content": "#### 2"},
+                    {"content": "#### 3"},
+                ],
+            }
+        ]
+
+        input_tokens, output_tokens = estimate_bon_judge_tokens_per_query(
+            raw_rows,
+            counter=FixedTokenCounter(),
+            judge_output_tokens_per_score=8,
+        )
+
+        self.assertEqual(input_tokens, 20)
+        self.assertEqual(output_tokens, 16)
 
 
 if __name__ == "__main__":

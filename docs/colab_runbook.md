@@ -426,18 +426,174 @@ Keep checkpoints outside git. In the final submission, include:
 - Final aggregate CSV and figures.
 - A short note that raw JSONL and checkpoints are intentionally omitted because of size.
 
-## Next After Training
+## Qwen Serving Smoke
 
-After a checkpoint exists, the next project step is to serve base Qwen and the LoRA adapter behind an OpenAI-compatible endpoint. The current inference script is already designed for that:
+Run this after the n100 and n500 LoRA adapter smokes have passed. The goal is to prove that the same `its_hub.OpenAICompatibleLanguageModel` path can talk to a local Qwen server before launching the full grid.
+
+Install vLLM after training is complete. This may update inference dependencies inside the Colab venv, so do it after the `training_hub` LoRA runs are done.
 
 ```bash
-.venv/bin/python -m src.run_its_experiment \
-  --endpoint http://localhost:8000/v1 \
-  --model Qwen/Qwen2.5-1.5B-Instruct \
-  --strategy sc \
-  --budget 4 \
-  --n-eval 50 \
-  --output results/raw/qwen_base_sc4.jsonl
+%%bash
+set -euo pipefail
+cd /content/red-hat-ai-take-home
+
+uv pip install vllm --torch-backend=auto
+which vllm
+vllm --version
 ```
 
-The exact serving command will depend on whether we use vLLM, TGI, or another OpenAI-compatible server. Do not start the full inference grid until the base-model smoke and LoRA-adapter smoke both produce `answer_format_ok_rate=1.0` on a tiny subset.
+Start one OpenAI-compatible vLLM server with the base model and both LoRA adapters. The adapter names below become the `--model` values for eval requests.
+
+```bash
+%%bash
+set -euo pipefail
+cd /content/red-hat-ai-take-home
+
+export VLLM_API_KEY=local-vllm
+export VLLM_BASE_MODEL=Qwen/Qwen2.5-1.5B-Instruct
+export LORA_N100=/content/drive/MyDrive/red-hat-ai-take-home/checkpoints/qwen2.5-1.5b-gsm8k-lora-n100
+export LORA_N500=/content/drive/MyDrive/red-hat-ai-take-home/checkpoints/qwen2.5-1.5b-gsm8k-lora-n500
+export VLLM_BIN="$(command -v vllm)"
+
+pkill -f "vllm serve" || true
+nohup "$VLLM_BIN" serve "$VLLM_BASE_MODEL" \
+  --host 127.0.0.1 \
+  --port 8000 \
+  --api-key "$VLLM_API_KEY" \
+  --dtype half \
+  --max-model-len 2048 \
+  --gpu-memory-utilization 0.85 \
+  --enable-lora \
+  --max-loras 2 \
+  --max-lora-rank 16 \
+  --lora-modules \
+    qwen-gsm8k-lora-n100="$LORA_N100" \
+    qwen-gsm8k-lora-n500="$LORA_N500" \
+  > /content/vllm_qwen_lora.log 2>&1 &
+
+echo $! > /content/vllm_server.pid
+echo "Started vLLM server pid=$(cat /content/vllm_server.pid)"
+```
+
+Wait for the server to become ready and confirm the base model plus both LoRA adapters are listed.
+
+```bash
+%%bash
+set -euo pipefail
+
+export VLLM_API_KEY=local-vllm
+for i in $(seq 1 180); do
+  if curl -sf \
+    -H "Authorization: Bearer $VLLM_API_KEY" \
+    http://127.0.0.1:8000/v1/models > /content/vllm_models.json; then
+    cat /content/vllm_models.json
+    exit 0
+  fi
+
+  if ! kill -0 "$(cat /content/vllm_server.pid)" 2>/dev/null; then
+    echo "vLLM process exited."
+    tail -160 /content/vllm_qwen_lora.log
+    exit 1
+  fi
+
+  sleep 2
+done
+
+tail -160 /content/vllm_qwen_lora.log
+exit 1
+```
+
+Run the tiny Qwen serving smoke. Keep `n_eval=3`; this is a server/API acceptance test, not the final benchmark.
+
+```bash
+%%bash
+set -euo pipefail
+cd /content/red-hat-ai-take-home
+
+export OPENAI_API_KEY=local-vllm
+export VLLM_ENDPOINT=http://127.0.0.1:8000/v1
+
+.venv/bin/python -m src.run_its_experiment \
+  --endpoint "$VLLM_ENDPOINT" \
+  --model Qwen/Qwen2.5-1.5B-Instruct \
+  --strategy greedy \
+  --n-eval 3 \
+  --output results/raw/_smoke_qwen_base_vllm_greedy.jsonl
+
+.venv/bin/python -m src.run_its_experiment \
+  --endpoint "$VLLM_ENDPOINT" \
+  --model qwen-gsm8k-lora-n500 \
+  --strategy greedy \
+  --n-eval 3 \
+  --output results/raw/_smoke_qwen_lora_n500_vllm_greedy.jsonl
+
+.venv/bin/python -m src.run_its_experiment \
+  --endpoint "$VLLM_ENDPOINT" \
+  --model qwen-gsm8k-lora-n500 \
+  --strategy sc \
+  --budget 4 \
+  --n-eval 3 \
+  --output results/raw/_smoke_qwen_lora_n500_vllm_sc4.jsonl
+```
+
+Aggregate the smoke outputs. The `--model-tokens-per-sample 0` placeholder keeps this smoke focused on correctness; final runs should use a measured or documented inference-cost estimate.
+
+```bash
+%%bash
+set -euo pipefail
+cd /content/red-hat-ai-take-home
+
+.venv/bin/python -m src.aggregate_results \
+  results/raw/_smoke_qwen_base_vllm_greedy.jsonl \
+  --train-size 0 \
+  --strategy greedy \
+  --budget 1 \
+  --train-gpu-hours 0 \
+  --model-tokens-per-sample 0 \
+  --output results/_smoke_qwen_base_vllm_greedy.csv
+
+.venv/bin/python -m src.aggregate_results \
+  results/raw/_smoke_qwen_lora_n500_vllm_greedy.jsonl \
+  --train-size 500 \
+  --strategy greedy \
+  --budget 1 \
+  --train-gpu-hours 0.125 \
+  --model-tokens-per-sample 0 \
+  --output results/_smoke_qwen_lora_n500_vllm_greedy.csv
+
+.venv/bin/python -m src.aggregate_results \
+  results/raw/_smoke_qwen_lora_n500_vllm_sc4.jsonl \
+  --train-size 500 \
+  --strategy sc \
+  --budget 4 \
+  --train-gpu-hours 0.125 \
+  --model-tokens-per-sample 0 \
+  --output results/_smoke_qwen_lora_n500_vllm_sc4.csv
+
+sed -n '1,2p' results/_smoke_qwen_base_vllm_greedy.csv
+sed -n '1,2p' results/_smoke_qwen_lora_n500_vllm_greedy.csv
+sed -n '1,2p' results/_smoke_qwen_lora_n500_vllm_sc4.csv
+```
+
+Do not start the full inference grid until these smoke rows have `answer_format_ok_rate=1.0` or until any format failures are understood and documented.
+
+Stop the server when done:
+
+```bash
+%%bash
+set -euo pipefail
+if [ -f /content/vllm_server.pid ]; then
+  kill "$(cat /content/vllm_server.pid)" || true
+fi
+```
+
+## Final Eval Grid
+
+After the Qwen serving smoke passes, run the required grid:
+
+- Model ids: `Qwen/Qwen2.5-1.5B-Instruct`, `qwen-gsm8k-lora-n100`, `qwen-gsm8k-lora-n500`.
+- Train sizes: `0`, `100`, `500`.
+- Strategies: greedy budget `1`, Self-Consistency budget `4`, Self-Consistency budget `8`.
+- Eval size: `50`.
+
+Best-of-N @4 is optional and should only be added after the required grid is complete.

@@ -1,6 +1,6 @@
 # Compute-Matched Pareto Frontier
 
-> Status: prototype in progress. The local vertical slices for setup, data generation, LoRA training, inference-time scaling, and aggregation are working. Colab T4 Qwen2.5 LoRA runs for `train_size=100` and `train_size=500` have completed; OpenAI-compatible Qwen serving and final Pareto plots are still pending.
+> Status: prototype in progress. The main Qwen evaluation grid has completed, with aggregate results, analysis notes, and first-pass figures committed. Serving-token cost estimates, optional Best-of-N, and the AI-assisted development write-up remain.
 
 **中文版本：[README.zh.md](./README.zh.md)**
 
@@ -18,25 +18,25 @@ The intended final artifact is a Pareto frontier in `(USD cost, accuracy)` space
 
 ## Current Result
 
-The final ML result is not ready yet. The table below is smoke-test evidence that the pieces now connect end to end; it should not be read as a benchmark.
+The first full Qwen grid is complete on a deterministic 50-row GSM8K subset. Aggregate metrics are committed in [results/aggregated.csv](./results/aggregated.csv), with detailed error analysis in [docs/results_analysis.md](./docs/results_analysis.md). Raw per-example JSONL outputs are intentionally kept out of git.
 
-| Step | Current smoke | Result |
-| --- | --- | --- |
-| Setup | `bash scripts/verify_setup.sh --live` | Imports and live API checks pass after installing `its-hub[lm]`. |
-| Eval set | `data/eval_gsm8k_50.jsonl` | Deterministic 50-row GSM8K test subset. |
-| Synthetic data | `src.data_generation --n 500` | `sdg_hub.Flow` generated chat-template SFT records with `gpt-4o-mini`. |
-| Data quality | `src.validate_training_data` + `src.filter_training_data` | The 500-sample run produced 497 valid training records after final-answer validation. |
-| Training prep | `src.train_lora --data-path ...` | `training_hub.lora_sft` kwargs are validated in dry-run mode. Local Mac execution is intentionally deferred to Colab. |
-| LoRA training | Colab T4, 497 valid records from a 500-sample `sdg_hub` run | `training_hub.lora_sft` completed 3 epochs / 747 steps in about 451 seconds, final train loss `0.2577`. |
-| LoRA adapter smoke | Saved Qwen2.5-1.5B LoRA adapter, `n_eval=3` | The n500 adapter loads with Unsloth and greedy local generation gives `3/3` exact match with `answer_format_ok_rate=1.0`. |
-| Greedy inference | `gpt-4o-mini`, `n_eval=3`, budget `1` | Raw JSONL plus aggregation path works, `3/3` exact match. |
-| Self-Consistency | `gpt-4o-mini`, `n_eval=3`, budget `4` | `its_hub.SelfConsistency` path works, `3/3` exact match after projecting votes to final numeric answers. |
+| train_size | model variant | Greedy | SC@4 | SC@8 | best format rate |
+| ---: | --- | ---: | ---: | ---: | ---: |
+| 0 | base Qwen2.5-1.5B-Instruct | 0.68 | **0.76** | **0.76** | 0.90 |
+| 100 | LoRA n100 | 0.38 | 0.46 | 0.52 | 1.00 |
+| 500 | LoRA n500 | 0.54 | 0.64 | 0.70 | 1.00 |
 
-One important implementation detail came out of the first Self-Consistency smoke: `its_hub.SelfConsistency()` defaults to voting on the entire stripped response text. For GSM8K this is the wrong semantic space, because four responses can all end in `#### 540` but differ in wording and therefore receive one vote each. The project now passes `consistency_space_projection_func=final_answer_projection`, where `final_answer_projection` reuses the evaluator's final-number extraction. In the latest smoke, response counts are numeric answer votes such as `{"540": 4}` instead of full text strings.
+![Accuracy heatmap](./results/figures/accuracy_heatmap.png)
 
-There is also one evaluation caveat worth keeping visible: an early smoke run with `max_tokens=256` truncated one response after deriving the correct answer. Exact match still succeeded because the evaluator extracts the last numeric token, but the final answer line was missing. The default is now `max_tokens=512`, and the full experiment should monitor malformed final lines.
+The headline result is nuanced: Self-Consistency is the clearest accuracy win, while synthetic LoRA improves output controllability more than answer accuracy. The base model remains strongest on accuracy (`0.76` with SC@4/SC@8), but its formatting compliance drops under heavier sampling. The n500 LoRA model is weaker on raw accuracy (`0.70` with SC@8) but produces fully compliant final-answer formatting across the grid.
 
-To make that visible in result tables, aggregation now includes answer-format diagnostics such as `has_final_marker_rate`, `answer_format_ok_rate`, `missing_final_marker_count`, and `malformed_final_marker_count`.
+![Accuracy vs training cost](./results/figures/cost_accuracy_training_only.png)
+
+The cost plot currently includes one-time synthetic-data and training cost only. Serving-token cost is still a placeholder (`model_tokens_per_sample=0`), so the next cost-accounting step is to add a measured or documented per-query inference estimate before treating this as the final Pareto frontier.
+
+One important implementation detail came out of the first Self-Consistency smoke: `its_hub.SelfConsistency()` defaults to voting on the entire stripped response text. For GSM8K this is the wrong semantic space, because four responses can all end in `#### 540` but differ in wording and therefore receive one vote each. The project now passes `consistency_space_projection_func=final_answer_projection`, where `final_answer_projection` reuses the evaluator's final-number extraction.
+
+To keep formatting visible, aggregation includes answer-format diagnostics such as `has_final_marker_rate`, `answer_format_ok_rate`, `missing_final_marker_count`, and `malformed_final_marker_count`.
 
 ## Problem and Approach
 
@@ -146,7 +146,7 @@ The current prototype is intentionally script-first:
 5. `src.run_its_experiment` runs one greedy or Self-Consistency inference cell via `its_hub`.
 6. `src.run_eval_grid` runs the required 3-model x 3-strategy Qwen eval grid and writes raw cell outputs.
 7. `src.aggregate_results` computes exact-match accuracy and cost columns.
-8. Final plotting is still pending.
+8. `src.plot_results` generates the current result figures from `results/aggregated.csv`.
 
 ## Cost Accounting
 
@@ -196,12 +196,11 @@ Detailed bilingual notes on library improvement opportunities are in [docs/libra
 - `pytest` for focused unit tests around data shape, evaluation, aggregation, and training-call preparation.
 - Hugging Face `datasets` for GSM8K loading.
 - OpenAI `gpt-4o-mini` as the cheap teacher and early smoke model.
-- Colab Pro for Qwen LoRA training and, next, vLLM or another OpenAI-compatible server for Qwen inference.
+- Colab Pro for Qwen LoRA training and vLLM OpenAI-compatible serving.
 
 ## Next Steps
 
-1. Run the required Qwen eval grid with `src.run_eval_grid`.
-2. Replace placeholder inference-cost inputs with measured or documented serving-cost estimates.
-3. Add Best-of-N @4 as a bonus strategy if the required grid is complete.
-4. Generate Pareto figures and commit `results/aggregated.csv` plus final plots.
-5. Finish the [AI-assisted development write-up](./AI_ASSISTED_DEV.md) with concrete examples from the planning, review, and validation loop.
+1. Replace placeholder inference-cost inputs with measured or documented serving-cost estimates.
+2. Regenerate the cost/accuracy figure after serving cost is included.
+3. Add Best-of-N @4 as a bonus strategy if time permits.
+4. Finish the [AI-assisted development write-up](./AI_ASSISTED_DEV.md) with concrete examples from the planning, review, and validation loop.

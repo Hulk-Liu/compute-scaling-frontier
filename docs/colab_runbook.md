@@ -642,6 +642,38 @@ export OPENAI_API_KEY=local-vllm
   --output results/aggregated.csv
 ```
 
-The first final grid uses `--model-tokens-per-sample 0`, so its cost columns include training cost but not measured serving-token cost yet. After the accuracy grid is stable, replace that placeholder with a measured or documented token/cost estimate before creating final figures.
+The first final grid uses `--model-tokens-per-sample 0`, so its initial cost columns include training cost but not serving-token cost yet. After the accuracy grid is stable, estimate serving cost from the raw outputs and regenerate figures:
+
+```bash
+%%bash
+set -euo pipefail
+cd /content/red-hat-ai-take-home
+
+.venv/bin/python -m src.estimate_serving_costs \
+  --aggregate results/aggregated.csv \
+  --raw-dir results/raw \
+  --token-method auto \
+  --output results/aggregated.csv
+
+.venv/bin/python -m src.plot_results
+
+sed -n '1,20p' results/aggregated.csv
+ls -lh results/figures
+```
+
+`--token-method auto` tries the Qwen Hugging Face tokenizer first and falls back to the documented 4-characters-per-token heuristic if the tokenizer is unavailable. For exact reproducibility with the committed local aggregate, use `--token-method char`.
+
+Package final result artifacts for local download:
+
+```bash
+%%bash
+set -euo pipefail
+cd /content/red-hat-ai-take-home
+
+tar -czf /content/results_final_grid.tar.gz results
+ls -lh /content/results_final_grid.tar.gz
+```
+
+Download `/content/results_final_grid.tar.gz` from the Colab file browser, then unpack it in the local repo and commit `results/aggregated.csv` plus final figures. Raw JSONL outputs remain ignored by git unless you intentionally force-add them for auditability.
 
 Best-of-N @4 is optional and should only be added after the required grid is complete.

@@ -46,6 +46,7 @@ class PlotResultsTests(unittest.TestCase):
                         "answer_format_ok_rate",
                         "train_cost_usd",
                         "inference_cost_per_query_usd",
+                        "total_cost_usd_at_1000",
                     ],
                 )
                 writer.writeheader()
@@ -58,6 +59,7 @@ class PlotResultsTests(unittest.TestCase):
                         "answer_format_ok_rate": "1.0",
                         "train_cost_usd": "0.55",
                         "inference_cost_per_query_usd": "0.0",
+                        "total_cost_usd_at_1000": "0.58",
                     }
                 )
 
@@ -66,6 +68,7 @@ class PlotResultsTests(unittest.TestCase):
         self.assertEqual(rows[0]["train_size"], 500)
         self.assertEqual(rows[0]["budget"], 8)
         self.assertEqual(rows[0]["accuracy"], 0.7)
+        self.assertEqual(rows[0]["total_cost_usd_at_1000"], 0.58)
 
 
 if __name__ == "__main__":

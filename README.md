@@ -1,6 +1,6 @@
 # Compute-Matched Pareto Frontier
 
-> Status: prototype in progress. The main Qwen evaluation grid has completed, with aggregate results, analysis notes, and first-pass figures committed. Serving-token cost estimates, optional Best-of-N, and the AI-assisted development write-up remain.
+> Status: working prototype. The required Qwen evaluation grid has completed, and the repo includes aggregate results, serving-cost estimates, figures, analysis notes, and an AI-assisted development write-up. Best-of-N remains an optional extension.
 
 **中文版本：[README.zh.md](./README.zh.md)**
 
@@ -11,10 +11,10 @@ When an LLM system has a fixed compute budget, should that budget go into a one-
 This project tests that trade-off on **GSM8K** with **Qwen2.5-1.5B-Instruct**, integrating three Red Hat AI Innovation Team libraries:
 
 - **[sdg_hub](https://github.com/Red-Hat-AI-Innovation-Team/sdg_hub)** for synthetic math-reasoning SFT data from a stronger teacher model.
-- **[training_hub](https://github.com/Red-Hat-AI-Innovation-Team/training_hub)** for the planned LoRA fine-tuning path.
+- **[training_hub](https://github.com/Red-Hat-AI-Innovation-Team/training_hub)** for the LoRA fine-tuning path.
 - **[its_hub](https://github.com/Red-Hat-AI-Innovation-Team/its_hub)** for greedy and Self-Consistency inference through an OpenAI-compatible endpoint.
 
-The intended final artifact is a Pareto frontier in `(USD cost, accuracy)` space for query volumes `N in {1K, 10K, 100K, 1M}`.
+The final artifact is a first-pass Pareto view in `(USD cost, accuracy)` space for query volumes `N in {1K, 10K, 100K, 1M}`.
 
 ## Current Result
 
@@ -30,9 +30,11 @@ The first full Qwen grid is complete on a deterministic 50-row GSM8K subset. Agg
 
 The headline result is nuanced: Self-Consistency is the clearest accuracy win, while synthetic LoRA improves output controllability more than answer accuracy. The base model remains strongest on accuracy (`0.76` with SC@4/SC@8), but its formatting compliance drops under heavier sampling. The n500 LoRA model is weaker on raw accuracy (`0.70` with SC@8) but produces fully compliant final-answer formatting across the grid.
 
-![Accuracy vs training cost](./results/figures/cost_accuracy_training_only.png)
+![Accuracy vs total cost by query volume](./results/figures/cost_accuracy_by_volume.png)
 
-The cost plot currently includes one-time synthetic-data and training cost only. Serving-token cost is still a placeholder (`model_tokens_per_sample=0`), so the next cost-accounting step is to add a measured or documented per-query inference estimate before treating this as the final Pareto frontier.
+Serving cost is estimated from the raw generated outputs using average prompt+completion length and the self-hosted Qwen serving assumptions in [prices.yaml](./prices.yaml). The committed aggregate uses `token_estimation_method=char_heuristic_4`, which keeps the committed cost columns independent of a locally cached Qwen tokenizer. On Colab or another environment with the tokenizer available, the same estimator can use a Hugging Face tokenizer instead.
+
+At low volume, the extra samples used by SC are cheap enough that base SC@4 is the cleanest accuracy/cost point. At high volume, per-query inference dominates and greedy variants become cheaper, but in this run the fine-tuned models do not recover enough accuracy to beat base SC on quality.
 
 One important implementation detail came out of the first Self-Consistency smoke: `its_hub.SelfConsistency()` defaults to voting on the entire stripped response text. For GSM8K this is the wrong semantic space, because four responses can all end in `#### 540` but differ in wording and therefore receive one vote each. The project now passes `consistency_space_projection_func=final_answer_projection`, where `final_answer_projection` reuses the evaluator's final-number extraction.
 
@@ -42,7 +44,7 @@ To keep formatting visible, aggregation includes answer-format diagnostics such 
 
 The core question is whether fine-tuning and inference-time scaling compound or substitute for each other under a compute budget.
 
-The planned main experiment grid is:
+The main experiment grid is:
 
 - Model variants: base Qwen2.5-1.5B-Instruct (`train_size=0`), LoRA n100, and LoRA n500.
 - Required inference strategies: greedy, Self-Consistency @4, and Self-Consistency @8.
@@ -117,6 +119,20 @@ Aggregate one raw result file:
   --output results/_smoke_gpt4omini_sc4.csv
 ```
 
+Estimate serving-token costs from raw grid outputs:
+
+```bash
+.venv/bin/python -m src.estimate_serving_costs \
+  --token-method char \
+  --output results/aggregated.csv
+```
+
+Generate figures:
+
+```bash
+.venv/bin/python -m src.plot_results
+```
+
 Run unit tests:
 
 ```bash
@@ -146,7 +162,8 @@ The current prototype is intentionally script-first:
 5. `src.run_its_experiment` runs one greedy or Self-Consistency inference cell via `its_hub`.
 6. `src.run_eval_grid` runs the required 3-model x 3-strategy Qwen eval grid and writes raw cell outputs.
 7. `src.aggregate_results` computes exact-match accuracy and cost columns.
-8. `src.plot_results` generates the current result figures from `results/aggregated.csv`.
+8. `src.estimate_serving_costs` estimates serving-token cost from raw outputs and updates aggregate cost columns.
+9. `src.plot_results` generates the current result figures from `results/aggregated.csv`.
 
 ## Cost Accounting
 
@@ -159,6 +176,8 @@ The current model separates:
 - Per-query inference cost from model tokens, strategy budget, and optional judge tokens.
 - Total serving cost as `training_cost + query_count * inference_cost_per_query`.
 
+For the committed Qwen grid, `src.estimate_serving_costs` estimates `model_tokens_per_sample` from raw prompt and completion text, then scales it by the strategy budget. The default `auto` mode tries the Qwen Hugging Face tokenizer and falls back to a documented 4-characters-per-token heuristic; the committed CSV uses the explicit heuristic path to avoid hidden local cache dependence.
+
 This is deliberately simple, but it makes the economic break-even point explicit and easy to change during review.
 
 ## Design Decisions and Scope
@@ -166,7 +185,7 @@ This is deliberately simple, but it makes the economic break-even point explicit
 - **OpenAI-compatible abstraction first.** The same `its_hub.OpenAICompatibleLanguageModel` path works for OpenAI smoke tests today and Qwen/vLLM later.
 - **Final-answer projection for math Self-Consistency.** Voting on whole text is too brittle for GSM8K, so the project votes on the extracted final number.
 - **Dry-run training locally, execute in Colab.** `training_hub`'s LoRA path uses the Unsloth backend, which is not available on this Mac setup. The local script validates data and kwargs; Colab T4 executes the real LoRA run.
-- **Small eval first.** The project uses tiny `n_eval=3` live smokes while developing to keep cost and debugging tight, then will scale to the 50-row fixed subset.
+- **Small eval first.** The project used tiny `n_eval=3` live smokes while developing to keep cost and debugging tight, then ran the final 50-row fixed subset.
 - **Commit final evidence, ignore raw noise.** Raw per-example outputs under `results/raw/*.jsonl` are ignored, while final aggregate CSVs and figures should be committed.
 
 ## What Worked and What Did Not
@@ -178,7 +197,7 @@ Worked:
 - `training_hub.lora_sft` completed Qwen2.5-1.5B LoRA runs on Colab T4 using the Unsloth backend for both n100 and n500.
 - The saved LoRA adapters can be reloaded for local greedy generation in Colab, and their outputs flow through the same evaluator and aggregation path as the inference-time scaling smokes.
 - `its_hub` greedy and Self-Consistency paths work once installed with the `[lm]` extra.
-- The evaluator, aggregation code, and cost-accounting tests make the smoke outputs reviewable.
+- The evaluator, aggregation code, serving-cost estimator, and cost-accounting tests make the outputs reviewable.
 
 Did not work cleanly:
 
@@ -200,7 +219,6 @@ Detailed bilingual notes on library improvement opportunities are in [docs/libra
 
 ## Next Steps
 
-1. Replace placeholder inference-cost inputs with measured or documented serving-cost estimates.
-2. Regenerate the cost/accuracy figure after serving cost is included.
-3. Add Best-of-N @4 as a bonus strategy if time permits.
-4. Finish the [AI-assisted development write-up](./AI_ASSISTED_DEV.md) with concrete examples from the planning, review, and validation loop.
+1. Add Best-of-N @4 as a bonus strategy if time permits, clearly labeling it as judge-assisted if an external verifier is used.
+2. Re-run the grid at a larger eval size if more time or compute is available.
+3. Try a targeted second synthetic-data pass focused on LoRA failure modes.

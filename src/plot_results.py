@@ -18,6 +18,12 @@ import matplotlib.pyplot as plt
 
 DEFAULT_INPUT = Path("results/aggregated.csv")
 DEFAULT_FIGURE_DIR = Path("results/figures")
+QUERY_COUNT_COLUMNS = (
+    ("1K", "total_cost_usd_at_1000"),
+    ("10K", "total_cost_usd_at_10000"),
+    ("100K", "total_cost_usd_at_100000"),
+    ("1M", "total_cost_usd_at_1000000"),
+)
 
 
 def read_aggregate_rows(path: Path | str) -> list[dict[str, Any]]:
@@ -34,6 +40,9 @@ def read_aggregate_rows(path: Path | str) -> list[dict[str, Any]]:
             row["inference_cost_per_query_usd"] = float(
                 row["inference_cost_per_query_usd"]
             )
+            for _label, column in QUERY_COUNT_COLUMNS:
+                if column in row:
+                    row[column] = float(row[column])
             rows.append(row)
     if not rows:
         raise ValueError(f"No aggregate rows found in {path}")
@@ -145,12 +154,72 @@ def plot_cost_accuracy(rows: list[dict[str, Any]], output_path: Path) -> None:
     ax.set_xlabel("One-time training cost, USD")
     ax.set_ylabel("Exact-match accuracy")
     ax.set_ylim(0.3, 0.82)
-    ax.set_title("Accuracy vs Training Cost\nserving-token cost not yet included")
+    ax.set_title("Accuracy vs One-Time Training Cost\ntraining-only diagnostic")
     ax.grid(True, axis="both", alpha=0.25)
     ax.legend(title="Strategy")
     fig.tight_layout()
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_path, dpi=180)
+    plt.close(fig)
+
+
+def plot_cost_accuracy_by_volume(rows: list[dict[str, Any]], output_path: Path) -> None:
+    """Plot accuracy against total cost at several query volumes."""
+
+    labels = ["Greedy", "SC@4", "SC@8"]
+    colors = {"Greedy": "#3B82F6", "SC@4": "#10B981", "SC@8": "#F59E0B"}
+    markers = {0: "o", 100: "s", 500: "^"}
+
+    fig, axes = plt.subplots(2, 2, figsize=(11, 7), sharey=True)
+    for ax, (volume_label, cost_column) in zip(axes.flat, QUERY_COUNT_COLUMNS):
+        for label in labels:
+            label_rows = sorted(
+                [row for row in rows if strategy_label(row) == label],
+                key=lambda row: row[cost_column],
+            )
+            xs = [row[cost_column] for row in label_rows]
+            ys = [row["accuracy"] for row in label_rows]
+            ax.plot(xs, ys, color=colors[label], linewidth=1.6, label=label)
+            for row in label_rows:
+                train_size = row["train_size"]
+                ax.scatter(
+                    row[cost_column],
+                    row["accuracy"],
+                    color=colors[label],
+                    marker=markers[train_size],
+                    s=72,
+                    edgecolor="black",
+                    linewidth=0.5,
+                    zorder=3,
+                )
+                ax.annotate(
+                    f"n={train_size}",
+                    (row[cost_column], row["accuracy"]),
+                    textcoords="offset points",
+                    xytext=(5, 5),
+                    fontsize=7,
+                )
+
+        ax.set_title(f"{volume_label} queries")
+        ax.set_xlabel("Total cost, USD")
+        ax.grid(True, axis="both", alpha=0.25)
+
+    axes[0][0].set_ylabel("Exact-match accuracy")
+    axes[1][0].set_ylabel("Exact-match accuracy")
+    axes[0][0].set_ylim(0.3, 0.82)
+    handles, legend_labels = axes[0][0].get_legend_handles_labels()
+    fig.legend(
+        handles,
+        legend_labels,
+        title="Strategy",
+        loc="upper center",
+        ncol=3,
+        bbox_to_anchor=(0.5, 1.02),
+    )
+    fig.suptitle("Accuracy vs Total Cost by Query Volume", y=1.08, fontsize=14)
+    fig.tight_layout()
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output_path, dpi=180, bbox_inches="tight")
     plt.close(fig)
 
 
@@ -166,6 +235,7 @@ def main() -> int:
     rows = read_aggregate_rows(args.input)
     plot_accuracy_heatmap(rows, args.output_dir / "accuracy_heatmap.png")
     plot_cost_accuracy(rows, args.output_dir / "cost_accuracy_training_only.png")
+    plot_cost_accuracy_by_volume(rows, args.output_dir / "cost_accuracy_by_volume.png")
     print(f"Wrote figures to {args.output_dir}")
     return 0
 

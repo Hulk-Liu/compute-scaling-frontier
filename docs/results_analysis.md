@@ -24,6 +24,29 @@ This note summarizes the first full Qwen evaluation grid:
 
 The strongest accuracy cell is still the base model with Self-Consistency @4 or @8 (`0.76`). The n500 LoRA model improves over n100 and benefits from inference-time scaling, but it does not surpass the base model on this 50-row sample.
 
+## Cost Result
+
+Serving cost is estimated from the raw prompt and completion text using the self-hosted Qwen assumptions in `prices.yaml`: A10-class GPU at `$0.40/hr`, sustained throughput of `600 tok/s`, and therefore roughly `$0.18 / 1M tokens`. The committed aggregate uses `token_estimation_method=char_heuristic_4` so the result does not depend on a locally cached Qwen tokenizer. This is an estimate, not metered production billing.
+
+| train_size | strategy | budget | accuracy | tokens/sample | cost/query | total@1K | total@1M |
+| ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 0 | greedy | 1 | 0.68 | 316 | $0.000057 | $0.057 | $56.88 |
+| 0 | sc | 4 | 0.76 | 302 | $0.000217 | $0.217 | $217.44 |
+| 0 | sc | 8 | 0.76 | 313 | $0.000451 | $0.451 | $450.72 |
+| 100 | greedy | 1 | 0.38 | 180 | $0.000032 | $0.144 | $32.51 |
+| 100 | sc | 4 | 0.46 | 171 | $0.000123 | $0.235 | $123.23 |
+| 100 | sc | 8 | 0.52 | 173 | $0.000249 | $0.361 | $249.23 |
+| 500 | greedy | 1 | 0.54 | 193 | $0.000035 | $0.585 | $35.29 |
+| 500 | sc | 4 | 0.64 | 195 | $0.000140 | $0.690 | $140.95 |
+| 500 | sc | 8 | 0.70 | 193 | $0.000278 | $0.828 | $278.47 |
+
+The cost view changes the interpretation by query volume:
+
+- At `1K` queries, training cost is still visible, and base SC@4 is an attractive point: `0.76` accuracy for about `$0.22` total estimated cost.
+- At `1M` queries, per-query sampling dominates. Base SC@4 still has the best accuracy, but it costs about `$217` versus about `$57` for base greedy.
+- The n500 LoRA model is cheaper than base SC@4 at high volume only when using greedy decoding, but its accuracy is lower (`0.54` vs `0.76`).
+- The n500 SC@8 model reaches `0.70`, but it costs more than base SC@4 at `1M` queries in this estimate because it uses twice as many samples and still trails in accuracy.
+
 ## What Fine-Tuning Changed
 
 Fine-tuning improved output controllability more clearly than answer accuracy.
@@ -102,6 +125,7 @@ The first full grid supports a nuanced answer:
 2. The synthetic LoRA runs improve answer formatting and controllability, but they do not improve accuracy over the base model.
 3. More synthetic data helps relative to less synthetic data: n500 consistently beats n100.
 4. Fine-tuning and SC are not pure substitutes. Here, FT improves format reliability while SC improves answer accuracy.
-5. The SC oracle gap motivates a possible Best-of-N or verifier-guided extension, but that should be framed as a separate judge-assisted strategy.
+5. Cost projection makes the traffic-volume trade-off explicit: SC is cheap enough to justify at small volumes, but high-volume serving makes extra samples materially more expensive.
+6. The SC oracle gap motivates a possible Best-of-N or verifier-guided extension, but that should be framed as a separate judge-assisted strategy.
 
 The main caveat is sample size: this is a 50-row evaluation designed for a take-home prototype. The result should be presented as evidence about this pipeline and data recipe, not as a general claim about Qwen2.5 or LoRA on GSM8K.

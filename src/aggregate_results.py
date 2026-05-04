@@ -165,7 +165,7 @@ def write_aggregated_csv(rows: list[dict[str, Any]], output_path: Path | str) ->
     output.parent.mkdir(parents=True, exist_ok=True)
     fieldnames = list(rows[0].keys())
     with output.open("w", encoding="utf-8", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer = csv.DictWriter(f, fieldnames=fieldnames, lineterminator="\n")
         writer.writeheader()
         writer.writerows(rows)
 

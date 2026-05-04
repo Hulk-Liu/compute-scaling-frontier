@@ -1,6 +1,6 @@
 # Compute-Matched Pareto Frontier
 
-> Status: prototype in progress. The local vertical slices for setup, data generation, training preparation, inference-time scaling, and aggregation are working. The full Qwen2.5 LoRA training run and final Pareto plots are still pending.
+> Status: prototype in progress. The local vertical slices for setup, data generation, inference-time scaling, and aggregation are working. A first Colab T4 Qwen2.5 LoRA training run has completed; OpenAI-compatible Qwen serving and final Pareto plots are still pending.
 
 **中文版本：[README.zh.md](./README.zh.md)**
 
@@ -27,6 +27,8 @@ The final ML result is not ready yet. The table below is smoke-test evidence tha
 | Synthetic data | `src.data_generation --n 3` | `sdg_hub.Flow` generated chat-template SFT records with `gpt-4o-mini`. |
 | Data quality | `src.validate_training_data ... --fail-on-mismatch` | Teacher final-answer exact match was `3/3` on the tiny generated set. |
 | Training prep | `src.train_lora --data-path ...` | `training_hub.lora_sft` kwargs are validated in dry-run mode. Local Mac execution is intentionally deferred to Colab. |
+| LoRA training | Colab T4, 99 valid records from a 100-sample `sdg_hub` run | `training_hub.lora_sft` completed 3 epochs / 150 steps in about 103 seconds, final train loss `0.3205`. |
+| LoRA adapter smoke | Saved Qwen2.5-1.5B LoRA adapter, `n_eval=3` | Adapter loads with Unsloth and greedy local generation gives `3/3` exact match with `answer_format_ok_rate=1.0`. |
 | Greedy inference | `gpt-4o-mini`, `n_eval=3`, budget `1` | Raw JSONL plus aggregation path works, `3/3` exact match. |
 | Self-Consistency | `gpt-4o-mini`, `n_eval=3`, budget `4` | `its_hub.SelfConsistency` path works, `3/3` exact match after projecting votes to final numeric answers. |
 
@@ -163,7 +165,7 @@ This is deliberately simple, but it makes the economic break-even point explicit
 
 - **OpenAI-compatible abstraction first.** The same `its_hub.OpenAICompatibleLanguageModel` path works for OpenAI smoke tests today and Qwen/vLLM later.
 - **Final-answer projection for math Self-Consistency.** Voting on whole text is too brittle for GSM8K, so the project votes on the extracted final number.
-- **Dry-run training locally.** `training_hub`'s LoRA path uses the Unsloth backend, which is not available on this Mac setup. The local script validates data and kwargs; actual execution is reserved for Colab Pro.
+- **Dry-run training locally, execute in Colab.** `training_hub`'s LoRA path uses the Unsloth backend, which is not available on this Mac setup. The local script validates data and kwargs; Colab T4 executes the real LoRA run.
 - **Small eval first.** The project uses tiny `n_eval=3` live smokes while developing to keep cost and debugging tight, then will scale to the 50-row fixed subset.
 - **Commit final evidence, ignore raw noise.** Raw per-example outputs under `results/raw/*.jsonl` are ignored, while final aggregate CSVs and figures should be committed.
 
@@ -172,6 +174,9 @@ This is deliberately simple, but it makes the economic break-even point explicit
 Worked:
 
 - `sdg_hub.Flow` can run a custom GSM8K teacher-response flow with `gpt-4o-mini`.
+- A 100-sample synthetic generation pass produced 99 valid training records after final-answer validation; the invalid row was filtered out before training.
+- `training_hub.lora_sft` completed a Qwen2.5-1.5B LoRA run on Colab T4 using the Unsloth backend.
+- The saved LoRA adapter can be reloaded for local greedy generation in Colab, and its outputs flow through the same evaluator and aggregation path as the inference-time scaling smokes.
 - `its_hub` greedy and Self-Consistency paths work once installed with the `[lm]` extra.
 - The evaluator, aggregation code, and cost-accounting tests make the smoke outputs reviewable.
 
@@ -191,12 +196,13 @@ Detailed bilingual notes on library improvement opportunities are in [docs/libra
 - `pytest` for focused unit tests around data shape, evaluation, aggregation, and training-call preparation.
 - Hugging Face `datasets` for GSM8K loading.
 - OpenAI `gpt-4o-mini` as the cheap teacher and early smoke model.
-- Colab Pro and vLLM are planned for Qwen training and serving.
+- Colab Pro for Qwen LoRA training and, next, vLLM or another OpenAI-compatible server for Qwen inference.
 
 ## Next Steps
 
-1. Run the LoRA training command in Colab Pro on a larger generated SFT set.
-2. Serve base Qwen and the LoRA adapter through an OpenAI-compatible endpoint.
-3. Run the full inference grid for greedy, Self-Consistency, and Best-of-N.
-4. Aggregate final results, generate Pareto figures, and commit `results/aggregated.csv` plus final plots.
-5. Finish the [AI-assisted development write-up](./AI_ASSISTED_DEV.md) with concrete examples from the planning, review, and validation loop.
+1. Scale the synthetic training set from the 100-sample smoke to a larger filtered set.
+2. Train and smoke-test the larger LoRA adapter in Colab.
+3. Serve base Qwen and the LoRA adapter through an OpenAI-compatible endpoint.
+4. Run the full inference grid for greedy, Self-Consistency, and Best-of-N.
+5. Aggregate final results, generate Pareto figures, and commit `results/aggregated.csv` plus final plots.
+6. Finish the [AI-assisted development write-up](./AI_ASSISTED_DEV.md) with concrete examples from the planning, review, and validation loop.

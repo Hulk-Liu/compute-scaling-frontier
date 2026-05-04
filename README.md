@@ -1,6 +1,6 @@
 # Compute-Matched Pareto Frontier
 
-> Status: working prototype. The required Qwen evaluation grid has completed, and the repo includes aggregate results, serving-cost estimates, figures, analysis notes, and an AI-assisted development write-up. Best-of-N remains an optional extension.
+> Status: working prototype. The required Qwen evaluation grid has completed, and the repo includes aggregate results, serving-cost estimates, figures, analysis notes, and an AI-assisted development write-up. A judge-assisted Best-of-N bonus run is included as an appendix.
 
 **中文版本：[README.zh.md](./README.zh.md)**
 
@@ -40,6 +40,18 @@ One important implementation detail came out of the first Self-Consistency smoke
 
 To keep formatting visible, aggregation includes answer-format diagnostics such as `has_final_marker_rate`, `answer_format_ok_rate`, `missing_final_marker_count`, and `malformed_final_marker_count`.
 
+### Optional Best-of-N Appendix
+
+I also ran a bonus `BestOfN @4` grid using `its_hub.BestOfN` with a `gpt-4o-mini` judge. Those results are kept separate in [results/aggregated_with_bon.csv](./results/aggregated_with_bon.csv) and [results/figures_with_bon](./results/figures_with_bon) because they did not improve the main frontier.
+
+| train_size | SC@4 accuracy | BoN@4 accuracy | BoN@4 format rate |
+| ---: | ---: | ---: | ---: |
+| 0 | 0.76 | 0.66 | 0.52 |
+| 100 | 0.46 | 0.52 | 1.00 |
+| 500 | 0.64 | 0.58 | 1.00 |
+
+The useful finding is negative: generic judge-assisted reranking was not a free win. Correct answers often appeared among BoN candidates, but the judge did not select them reliably. This makes verifier quality a first-class concern for future BoN-style work.
+
 ## Problem and Approach
 
 The core question is whether fine-tuning and inference-time scaling compound or substitute for each other under a compute budget.
@@ -48,7 +60,7 @@ The main experiment grid is:
 
 - Model variants: base Qwen2.5-1.5B-Instruct (`train_size=0`), LoRA n100, and LoRA n500.
 - Required inference strategies: greedy, Self-Consistency @4, and Self-Consistency @8.
-- Optional bonus strategy: Best-of-N @4 if time permits.
+- Bonus strategy: judge-assisted Best-of-N @4, reported separately because it did not improve the frontier.
 - Cost views: total cost at `1K`, `10K`, `100K`, and `1M` expected queries. These query-volume views reuse the same eval outputs; they do not require extra model inference runs.
 
 The practical hypothesis is that inference-time scaling can be attractive at low query volume, while fine-tuning should become more attractive as traffic grows because its cost is amortized.
@@ -160,7 +172,7 @@ The current prototype is intentionally script-first:
 3. `src.validate_training_data` checks generated teacher answers against GSM8K gold answers.
 4. `src.train_lora` validates chat-template data and prepares a `training_hub.lora_sft` call.
 5. `src.run_its_experiment` runs one greedy or Self-Consistency inference cell via `its_hub`.
-6. `src.run_eval_grid` runs the required 3-model x 3-strategy Qwen eval grid and writes raw cell outputs.
+6. `src.run_eval_grid` runs the required 3-model x 3-strategy Qwen eval grid and can optionally add judge-assisted BoN@4 cells.
 7. `src.aggregate_results` computes exact-match accuracy and cost columns.
 8. `src.estimate_serving_costs` estimates serving-token cost from raw outputs and updates aggregate cost columns.
 9. `src.plot_results` generates the current result figures from `results/aggregated.csv`.
@@ -219,6 +231,6 @@ Detailed bilingual notes on library improvement opportunities are in [docs/libra
 
 ## Next Steps
 
-1. Add Best-of-N @4 as a bonus strategy if time permits, clearly labeling it as judge-assisted if an external verifier is used.
+1. Replace the generic BoN judge with a stronger verifier or task-specific reward model.
 2. Re-run the grid at a larger eval size if more time or compute is available.
 3. Try a targeted second synthetic-data pass focused on LoRA failure modes.

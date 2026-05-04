@@ -91,6 +91,34 @@ The raw SC outputs also show that the correct answer often appeared among candid
 
 This is a useful diagnostic for the optional Best-of-N direction: there is headroom beyond simple majority voting, but exploiting it requires a better selector or verifier. If that selector is an external LLM judge, the result should be described as judge-assisted reranking rather than pure small-model inference-time scaling.
 
+## Optional Best-of-N @4 Finding
+
+I also ran a separate judge-assisted Best-of-N @4 grid using `its_hub.BestOfN` with a `gpt-4o-mini` judge. These outputs are intentionally kept separate from the main frontier in `results/aggregated_with_bon.csv`, `results/figures_with_bon/`, and the `results/raw/qwen_*_bon4.jsonl` files.
+
+The BoN aggregate uses `token_estimation_method=hf_tokenizer` because the Colab run had access to the Qwen tokenizer. The original main grid uses `char_heuristic_4` so it can be reproduced locally without requiring a cached tokenizer. The exact dollar values are therefore not meant to be compared across the two CSVs at high precision; the qualitative frontier comparison is what matters.
+
+| train_size | SC@4 accuracy | SC@8 accuracy | BoN@4 accuracy | BoN@4 format rate | BoN@4 total@1M |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 0 | 0.76 | 0.76 | 0.66 | 0.52 | $528.72 |
+| 100 | 0.46 | 0.52 | 0.52 | 1.00 | $314.99 |
+| 500 | 0.64 | 0.70 | 0.58 | 1.00 | $359.14 |
+
+The useful result is negative:
+
+- Base BoN@4 is worse than both base greedy (`0.68`) and base SC@4 (`0.76`).
+- n100 BoN@4 matches n100 SC@8 accuracy (`0.52`), but costs more because it adds external judge calls.
+- n500 BoN@4 is worse than n500 SC@4 (`0.64`) and n500 SC@8 (`0.70`).
+
+The raw BoN candidates show why. Correct answers often appeared in the candidate set, but the judge did not reliably select them:
+
+| model | selected_correct | oracle_contains_correct | missed_by_judge |
+| --- | ---: | ---: | ---: |
+| base | 33 | 40 | 7 |
+| n100 | 26 | 34 | 8 |
+| n500 | 29 | 35 | 6 |
+
+For example, in `gsm8k-test-3`, the base BoN candidates included the correct answer `540`, but the judge assigned multiple candidates a score of `10.0` and selected the first candidate, whose extracted answer was `180`. This makes verifier quality a first-class part of any future BoN-style strategy rather than a trivial bolt-on.
+
 ## Representative Error Patterns
 
 ### Fine-Tuning Hurt Some Previously Correct Problems
@@ -126,6 +154,6 @@ The first full grid supports a nuanced answer:
 3. More synthetic data helps relative to less synthetic data: n500 consistently beats n100.
 4. Fine-tuning and SC are not pure substitutes. Here, FT improves format reliability while SC improves answer accuracy.
 5. Cost projection makes the traffic-volume trade-off explicit: SC is cheap enough to justify at small volumes, but high-volume serving makes extra samples materially more expensive.
-6. The SC oracle gap motivates a possible Best-of-N or verifier-guided extension, but that should be framed as a separate judge-assisted strategy.
+6. The SC oracle gap did motivate a Best-of-N extension, but the bonus run showed that a generic LLM judge was not enough to improve the frontier.
 
 The main caveat is sample size: this is a 50-row evaluation designed for a take-home prototype. The result should be presented as evidence about this pipeline and data recipe, not as a general claim about Qwen2.5 or LoRA on GSM8K.

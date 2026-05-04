@@ -1,6 +1,6 @@
 # Compute-Matched Pareto Frontier（计算-精度的帕累托前沿）
 
-> 状态：可运行原型。必需的 Qwen evaluation grid 已完成，repo 里包含 aggregate results、serving-cost estimates、figures、结果分析和 AI-assisted development write-up。Best-of-N 仍然是可选扩展。
+> 状态：可运行原型。必需的 Qwen evaluation grid 已完成，repo 里包含 aggregate results、serving-cost estimates、figures、结果分析和 AI-assisted development write-up。额外的 judge-assisted Best-of-N bonus run 作为 appendix 保留。
 
 **English version: [README.md](./README.md)**
 
@@ -40,6 +40,18 @@ Serving cost 根据 raw generated outputs 的平均 prompt+completion 长度估�
 
 为了让格式问题可见，aggregation 会记录 `has_final_marker_rate`、`answer_format_ok_rate`、`missing_final_marker_count` 和 `malformed_final_marker_count`。
 
+### Optional Best-of-N Appendix
+
+我额外跑了一个 `BestOfN @4` bonus grid，使用 `its_hub.BestOfN` 和 `gpt-4o-mini` judge。结果单独放在 [results/aggregated_with_bon.csv](./results/aggregated_with_bon.csv) 和 [results/figures_with_bon](./results/figures_with_bon)，因为它没有改善主 Pareto frontier。
+
+| train_size | SC@4 accuracy | BoN@4 accuracy | BoN@4 format rate |
+| ---: | ---: | ---: | ---: |
+| 0 | 0.76 | 0.66 | 0.52 |
+| 100 | 0.46 | 0.52 | 1.00 |
+| 500 | 0.64 | 0.58 | 1.00 |
+
+这个结果的价值在于 negative finding：generic LLM judge-assisted reranking 不是免费提升。正确答案经常出现在 BoN candidates 里，但 judge 没有稳定选中它们。这说明 verifier quality 是 BoN-style work 的核心变量。
+
 ## 问题与方法
 
 核心问题：fine-tuning 和 inference-time scaling 在固定 compute budget 下到底是互补，还是互相替代？
@@ -48,7 +60,7 @@ Serving cost 根据 raw generated outputs 的平均 prompt+completion 长度估�
 
 - Model variants：base Qwen2.5-1.5B-Instruct (`train_size=0`)、LoRA n100、LoRA n500。
 - Inference strategies：greedy、Self-Consistency @4、Self-Consistency @8。
-- Optional bonus：如果时间允许，加 Best-of-N @4。
+- Bonus strategy：judge-assisted Best-of-N @4；因为没有改善 frontier，所以单独作为 appendix 报告。
 - Cost views：`1K`、`10K`、`100K`、`1M` expected queries。不同 query volume 只是复用同一批 eval outputs 做 cost projection，不需要重新跑模型。
 
 直觉假设是：低流量时，inference-time scaling 可能更划算；高流量时，fine-tuning 的一次性成本被摊薄，理论上应该更有吸引力。这次实验结果显示这个假设只部分成立，因为 LoRA 的 accuracy 没有超过 base model。
@@ -160,7 +172,7 @@ bash scripts/verify_setup.sh --live
 3. `src.validate_training_data` 检查 teacher answers 是否匹配 GSM8K gold answers。
 4. `src.train_lora` 验证 chat-template data，并准备 `training_hub.lora_sft` call。
 5. `src.run_its_experiment` 通过 `its_hub` 跑 greedy 或 Self-Consistency inference cell。
-6. `src.run_eval_grid` 跑 3-model x 3-strategy Qwen eval grid，并写 raw cell outputs。
+6. `src.run_eval_grid` 跑 3-model x 3-strategy Qwen eval grid，并可选加入 judge-assisted BoN@4 cells。
 7. `src.aggregate_results` 计算 exact-match accuracy 和初始 cost columns。
 8. `src.estimate_serving_costs` 从 raw outputs 估算 serving-token cost，并更新 aggregate cost columns。
 9. `src.plot_results` 从 `results/aggregated.csv` 生成 figures。
@@ -219,6 +231,6 @@ Library improvement ideas 的中英双语记录见 [docs/library_improvement_ide
 
 ## 更多时间会改进什么
 
-1. 加 Best-of-N @4；如果使用外部 verifier，需要明确标注为 judge-assisted strategy。
+1. 把 generic BoN judge 换成更强的 verifier 或 task-specific reward model。
 2. 如果时间/算力允许，把 eval size 从 50 扩到更大。
 3. 根据 LoRA failure modes 做第二轮 targeted synthetic data generation。

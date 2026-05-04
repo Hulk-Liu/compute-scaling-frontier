@@ -26,6 +26,15 @@ Thumbs.db
 
 # Project artifacts
 results/raw/*.jsonl
+!results/raw/qwen_base_greedy.jsonl
+!results/raw/qwen_base_sc4.jsonl
+!results/raw/qwen_base_sc8.jsonl
+!results/raw/qwen_lora_n100_greedy.jsonl
+!results/raw/qwen_lora_n100_sc4.jsonl
+!results/raw/qwen_lora_n100_sc8.jsonl
+!results/raw/qwen_lora_n500_greedy.jsonl
+!results/raw/qwen_lora_n500_sc4.jsonl
+!results/raw/qwen_lora_n500_sc8.jsonl
 results/_smoke*.csv
 data/augmented_train_*.jsonl
 data/_smoke*.jsonl

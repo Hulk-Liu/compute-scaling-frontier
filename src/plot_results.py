@@ -14,6 +14,7 @@ os.environ.setdefault("MPLCONFIGDIR", str(Path(tempfile.gettempdir()) / "mplconf
 os.environ.setdefault("XDG_CACHE_HOME", str(Path(tempfile.gettempdir()) / "cache"))
 
 import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
 
 
 DEFAULT_INPUT = Path("results/aggregated.csv")
@@ -124,14 +125,7 @@ def plot_cost_accuracy(rows: list[dict[str, Any]], output_path: Path) -> None:
 
     fig, ax = plt.subplots(figsize=(8, 5))
     for label in labels:
-        label_rows = sorted(
-            [row for row in rows if strategy_label(row) == label],
-            key=lambda row: row["train_cost_usd"],
-        )
-        xs = [row["train_cost_usd"] for row in label_rows]
-        ys = [row["accuracy"] for row in label_rows]
-        ax.plot(xs, ys, color=colors[label], linewidth=1.8, label=label)
-        for row in label_rows:
+        for row in [row for row in rows if strategy_label(row) == label]:
             train_size = row["train_size"]
             ax.scatter(
                 row["train_cost_usd"],
@@ -156,11 +150,47 @@ def plot_cost_accuracy(rows: list[dict[str, Any]], output_path: Path) -> None:
     ax.set_ylim(0.3, 0.82)
     ax.set_title("Accuracy vs One-Time Training Cost\ntraining-only diagnostic")
     ax.grid(True, axis="both", alpha=0.25)
-    ax.legend(title="Strategy")
+    ax.legend(handles=strategy_legend_handles(colors), title="Strategy")
     fig.tight_layout()
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_path, dpi=180)
     plt.close(fig)
+
+
+def strategy_legend_handles(colors: dict[str, str]) -> list[Line2D]:
+    """Build legend handles for inference strategy colors."""
+
+    return [
+        Line2D(
+            [0],
+            [0],
+            marker="o",
+            color="none",
+            markerfacecolor=color,
+            markeredgecolor="black",
+            markersize=8,
+            label=label,
+        )
+        for label, color in colors.items()
+    ]
+
+
+def train_size_legend_handles(markers: dict[int, str]) -> list[Line2D]:
+    """Build legend handles for train-size marker shapes."""
+
+    return [
+        Line2D(
+            [0],
+            [0],
+            marker=marker,
+            color="none",
+            markerfacecolor="#E5E7EB",
+            markeredgecolor="black",
+            markersize=8,
+            label=f"n={train_size}",
+        )
+        for train_size, marker in markers.items()
+    ]
 
 
 def plot_cost_accuracy_by_volume(rows: list[dict[str, Any]], output_path: Path) -> None:
@@ -170,17 +200,15 @@ def plot_cost_accuracy_by_volume(rows: list[dict[str, Any]], output_path: Path) 
     colors = {"Greedy": "#3B82F6", "SC@4": "#10B981", "SC@8": "#F59E0B"}
     markers = {0: "o", 100: "s", 500: "^"}
 
-    fig, axes = plt.subplots(2, 2, figsize=(11, 7), sharey=True)
-    for ax, (volume_label, cost_column) in zip(axes.flat, QUERY_COUNT_COLUMNS):
+    fig, axes = plt.subplots(
+        len(QUERY_COUNT_COLUMNS),
+        1,
+        figsize=(8.5, 11),
+        sharey=True,
+    )
+    for ax, (volume_label, cost_column) in zip(axes, QUERY_COUNT_COLUMNS):
         for label in labels:
-            label_rows = sorted(
-                [row for row in rows if strategy_label(row) == label],
-                key=lambda row: row[cost_column],
-            )
-            xs = [row[cost_column] for row in label_rows]
-            ys = [row["accuracy"] for row in label_rows]
-            ax.plot(xs, ys, color=colors[label], linewidth=1.6, label=label)
-            for row in label_rows:
+            for row in [row for row in rows if strategy_label(row) == label]:
                 train_size = row["train_size"]
                 ax.scatter(
                     row[cost_column],
@@ -192,32 +220,29 @@ def plot_cost_accuracy_by_volume(rows: list[dict[str, Any]], output_path: Path) 
                     linewidth=0.5,
                     zorder=3,
                 )
-                ax.annotate(
-                    f"n={train_size}",
-                    (row[cost_column], row["accuracy"]),
-                    textcoords="offset points",
-                    xytext=(5, 5),
-                    fontsize=7,
-                )
 
-        ax.set_title(f"{volume_label} queries")
+        ax.set_title(f"{volume_label} queries", loc="left", fontweight="bold")
         ax.set_xlabel("Total cost, USD")
+        ax.set_ylabel("Exact-match accuracy")
+        ax.set_ylim(0.3, 0.82)
         ax.grid(True, axis="both", alpha=0.25)
 
-    axes[0][0].set_ylabel("Exact-match accuracy")
-    axes[1][0].set_ylabel("Exact-match accuracy")
-    axes[0][0].set_ylim(0.3, 0.82)
-    handles, legend_labels = axes[0][0].get_legend_handles_labels()
     fig.legend(
-        handles,
-        legend_labels,
+        handles=strategy_legend_handles(colors),
         title="Strategy",
-        loc="upper center",
+        loc="upper left",
         ncol=3,
-        bbox_to_anchor=(0.5, 1.02),
+        bbox_to_anchor=(0.12, 1.01),
     )
-    fig.suptitle("Accuracy vs Total Cost by Query Volume", y=1.08, fontsize=14)
-    fig.tight_layout()
+    fig.legend(
+        handles=train_size_legend_handles(markers),
+        title="Train size",
+        loc="upper right",
+        ncol=3,
+        bbox_to_anchor=(0.88, 1.01),
+    )
+    fig.suptitle("Accuracy vs Total Cost by Query Volume", y=1.055, fontsize=14)
+    fig.tight_layout(rect=(0, 0, 1, 0.98))
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_path, dpi=180, bbox_inches="tight")
     plt.close(fig)

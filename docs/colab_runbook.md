@@ -332,6 +332,33 @@ find "$CKPT_DIR" -maxdepth 2 -type f | sort | head -50
 du -sh "$CKPT_DIR"
 ```
 
+## Smoke Test the LoRA Adapter
+
+Run in Colab before generating a larger training set. This step loads the saved LoRA adapter directly with Unsloth and runs greedy generation on three eval questions. It does not use `its_hub` yet; the goal is to prove the adapter artifact can be loaded and produces parseable answers.
+
+```bash
+%%bash
+set -euo pipefail
+cd /content/red-hat-ai-take-home
+.venv/bin/python -m src.smoke_lora_adapter \
+  --adapter-path "$CKPT_DIR" \
+  --n-eval 3 \
+  --output results/raw/_smoke_qwen_lora_n100_greedy.jsonl
+
+.venv/bin/python -m src.aggregate_results \
+  results/raw/_smoke_qwen_lora_n100_greedy.jsonl \
+  --train-size "$TRAIN_N" \
+  --strategy lora_greedy \
+  --budget 1 \
+  --train-gpu-hours 0.03 \
+  --model-tokens-per-sample 0 \
+  --output results/_smoke_qwen_lora_n100_greedy.csv
+
+sed -n '1,2p' results/_smoke_qwen_lora_n100_greedy.csv
+```
+
+The `--train-gpu-hours 0.03` value is a placeholder for the 99-record smoke run. Replace it with the measured GPU time for final experiments.
+
 ## Save Run Metadata
 
 Run in Colab after training.

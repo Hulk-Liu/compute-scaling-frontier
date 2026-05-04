@@ -596,4 +596,52 @@ After the Qwen serving smoke passes, run the required grid:
 - Strategies: greedy budget `1`, Self-Consistency budget `4`, Self-Consistency budget `8`.
 - Eval size: `50`.
 
+First confirm the planned cells:
+
+```bash
+%%bash
+set -euo pipefail
+cd /content/red-hat-ai-take-home
+
+.venv/bin/python -m src.run_eval_grid \
+  --endpoint http://127.0.0.1:8000/v1 \
+  --n-eval 50 \
+  --dry-run
+```
+
+Then run the grid. Keep the vLLM server running from the smoke step.
+
+```bash
+%%bash
+set -euo pipefail
+cd /content/red-hat-ai-take-home
+
+export OPENAI_API_KEY=local-vllm
+
+.venv/bin/python -m src.run_eval_grid \
+  --endpoint http://127.0.0.1:8000/v1 \
+  --n-eval 50 \
+  --output results/aggregated.csv
+
+sed -n '1,20p' results/aggregated.csv
+```
+
+If Colab disconnects or one cell fails after some raw JSONL files have been written, restart the vLLM server if needed and rerun with `--resume`:
+
+```bash
+%%bash
+set -euo pipefail
+cd /content/red-hat-ai-take-home
+
+export OPENAI_API_KEY=local-vllm
+
+.venv/bin/python -m src.run_eval_grid \
+  --endpoint http://127.0.0.1:8000/v1 \
+  --n-eval 50 \
+  --resume \
+  --output results/aggregated.csv
+```
+
+The first final grid uses `--model-tokens-per-sample 0`, so its cost columns include training cost but not measured serving-token cost yet. After the accuracy grid is stable, replace that placeholder with a measured or documented token/cost estimate before creating final figures.
+
 Best-of-N @4 is optional and should only be added after the required grid is complete.

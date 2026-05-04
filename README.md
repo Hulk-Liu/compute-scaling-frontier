@@ -143,9 +143,10 @@ The current prototype is intentionally script-first:
 2. `src.data_generation` loads GSM8K train rows and runs a custom `sdg_hub` flow.
 3. `src.validate_training_data` checks generated teacher answers against GSM8K gold answers.
 4. `src.train_lora` validates chat-template data and prepares a `training_hub.lora_sft` call.
-5. `src.run_its_experiment` runs greedy or Self-Consistency inference via `its_hub`.
-6. `src.aggregate_results` computes exact-match accuracy and cost columns.
-7. Final plotting is still pending.
+5. `src.run_its_experiment` runs one greedy or Self-Consistency inference cell via `its_hub`.
+6. `src.run_eval_grid` runs the required 3-model x 3-strategy Qwen eval grid and writes raw cell outputs.
+7. `src.aggregate_results` computes exact-match accuracy and cost columns.
+8. Final plotting is still pending.
 
 ## Cost Accounting
 
@@ -199,8 +200,8 @@ Detailed bilingual notes on library improvement opportunities are in [docs/libra
 
 ## Next Steps
 
-1. Serve base Qwen and the LoRA adapters through an OpenAI-compatible endpoint.
-2. Run the required inference grid for greedy, Self-Consistency @4, and Self-Consistency @8.
+1. Run the required Qwen eval grid with `src.run_eval_grid`.
+2. Replace placeholder inference-cost inputs with measured or documented serving-cost estimates.
 3. Add Best-of-N @4 as a bonus strategy if the required grid is complete.
-4. Aggregate final results, generate Pareto figures, and commit `results/aggregated.csv` plus final plots.
+4. Generate Pareto figures and commit `results/aggregated.csv` plus final plots.
 5. Finish the [AI-assisted development write-up](./AI_ASSISTED_DEV.md) with concrete examples from the planning, review, and validation loop.

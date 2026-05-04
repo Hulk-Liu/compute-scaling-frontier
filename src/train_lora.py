@@ -29,6 +29,8 @@ class LoRATrainingConfig:
     micro_batch_size: int = 2
     gradient_accumulation_steps: int = 1
     load_in_4bit: bool = True
+    bf16: bool = False
+    fp16: bool = True
     dataset_type: str = "chat_template"
     field_messages: str = "messages"
 
@@ -115,6 +117,8 @@ def build_lora_kwargs(config: LoRATrainingConfig) -> dict[str, Any]:
         "micro_batch_size": config.micro_batch_size,
         "gradient_accumulation_steps": config.gradient_accumulation_steps,
         "load_in_4bit": config.load_in_4bit,
+        "bf16": config.bf16,
+        "fp16": config.fp16,
         "dataset_type": config.dataset_type,
         "field_messages": config.field_messages,
     }
@@ -161,6 +165,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--gradient-accumulation-steps", type=int, default=1)
     parser.add_argument("--no-4bit", action="store_true")
     parser.add_argument(
+        "--bf16",
+        action="store_true",
+        help="Use bf16 precision. Requires Ampere+ GPU; default is fp16 for T4.",
+    )
+    parser.add_argument(
+        "--no-fp16",
+        action="store_true",
+        help="Disable fp16 precision. Defaults to fp16 for T4 compatibility.",
+    )
+    parser.add_argument(
         "--execute",
         action="store_true",
         help="Actually call training_hub.lora_sft. Defaults to dry-run only.",
@@ -183,6 +197,8 @@ def main() -> int:
         micro_batch_size=args.micro_batch_size,
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         load_in_4bit=not args.no_4bit,
+        bf16=args.bf16,
+        fp16=not args.no_fp16,
     )
     plan = run_lora_training(config, execute=args.execute)
     mode = "execute" if args.execute else "dry-run"

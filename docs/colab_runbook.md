@@ -159,6 +159,8 @@ PY
 
 If this fails, stop and capture the error in the project notes. The most likely issue is a CUDA/Unsloth dependency mismatch. If you see a warning about skipped C++ extensions for the current Torch version, continue to the dry-run step first; treat it as a performance warning unless training fails.
 
+The default training wrapper uses fp16 and disables bf16 because Colab T4 GPUs do not support bf16. If you later get an Ampere+ GPU and want bf16, pass `--bf16 --no-fp16` explicitly.
+
 ## Configure Secrets
 
 Run in Colab. Prefer Colab secrets named `OPENAI_API_KEY` and `HF_TOKEN`.

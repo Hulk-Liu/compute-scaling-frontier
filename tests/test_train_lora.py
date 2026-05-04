@@ -53,6 +53,8 @@ class TrainLoRATests(unittest.TestCase):
         self.assertEqual(kwargs["dataset_type"], "chat_template")
         self.assertEqual(kwargs["field_messages"], "messages")
         self.assertTrue(kwargs["load_in_4bit"])
+        self.assertFalse(kwargs["bf16"])
+        self.assertTrue(kwargs["fp16"])
 
     def test_prepare_lora_training_is_dry_run_plan(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

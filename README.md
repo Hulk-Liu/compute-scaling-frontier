@@ -18,7 +18,7 @@ The final artifact is a first-pass Pareto view in `(USD cost, accuracy)` space f
 
 ## Current Result
 
-The first full Qwen grid is complete on a deterministic 50-row GSM8K subset. Aggregate metrics are committed in [results/aggregated.csv](./results/aggregated.csv), with detailed error analysis in [docs/results_analysis.md](./docs/results_analysis.md). Raw per-example JSONL outputs are intentionally kept out of git.
+The first full Qwen grid is complete on a deterministic 50-row GSM8K subset. Aggregate metrics are committed in [results/aggregated.csv](./results/aggregated.csv), with detailed error analysis in [docs/results_analysis.md](./docs/results_analysis.md). Final-grid raw per-example JSONL outputs are committed under [results/raw](./results/raw) for auditability; smoke outputs remain ignored.
 
 | train_size | model variant | Greedy | SC@4 | SC@8 | best format rate |
 | ---: | --- | ---: | ---: | ---: | ---: |
@@ -186,7 +186,7 @@ This is deliberately simple, but it makes the economic break-even point explicit
 - **Final-answer projection for math Self-Consistency.** Voting on whole text is too brittle for GSM8K, so the project votes on the extracted final number.
 - **Dry-run training locally, execute in Colab.** `training_hub`'s LoRA path uses the Unsloth backend, which is not available on this Mac setup. The local script validates data and kwargs; Colab T4 executes the real LoRA run.
 - **Small eval first.** The project used tiny `n_eval=3` live smokes while developing to keep cost and debugging tight, then ran the final 50-row fixed subset.
-- **Commit final evidence, ignore raw noise.** Raw per-example outputs under `results/raw/*.jsonl` are ignored, while final aggregate CSVs and figures should be committed.
+- **Commit final evidence, ignore smoke noise.** Final-grid raw outputs are committed because they support cost estimation and error analysis; smoke outputs, generated training JSONL files, and checkpoints remain ignored.
 
 ## What Worked and What Did Not
 

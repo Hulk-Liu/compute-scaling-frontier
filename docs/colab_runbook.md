@@ -38,7 +38,7 @@ If the repo is private, make sure Colab can clone it. Options:
 - Temporarily use a private clone URL with token in the Colab session only.
 - Upload a zip if GitHub access is inconvenient.
 
-Do not commit `.env`, API keys, checkpoints, raw JSONL outputs, or generated training JSONL files.
+Do not commit `.env`, API keys, checkpoints, generated training JSONL files, or smoke raw JSONL outputs. Final-grid raw JSONL outputs can be committed because they are small and support cost/error auditability.
 
 ## Colab Runtime Setup
 
@@ -424,7 +424,7 @@ Keep checkpoints outside git. In the final submission, include:
 
 - Training command and GPU notes in README.
 - Final aggregate CSV and figures.
-- A short note that raw JSONL and checkpoints are intentionally omitted because of size.
+- A short note that checkpoints are intentionally omitted because of size, while final-grid raw JSONL outputs are committed for auditability.
 
 ## Qwen Serving Smoke
 
@@ -674,6 +674,6 @@ tar -czf /content/results_final_grid.tar.gz results
 ls -lh /content/results_final_grid.tar.gz
 ```
 
-Download `/content/results_final_grid.tar.gz` from the Colab file browser, then unpack it in the local repo and commit `results/aggregated.csv` plus final figures. Raw JSONL outputs remain ignored by git unless you intentionally force-add them for auditability.
+Download `/content/results_final_grid.tar.gz` from the Colab file browser, then unpack it in the local repo and commit `results/aggregated.csv`, final figures, and final-grid raw JSONL outputs. Smoke JSONL outputs remain ignored by git.
 
 Best-of-N @4 is optional and should only be added after the required grid is complete.

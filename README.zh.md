@@ -18,7 +18,7 @@
 
 ## 当前结果
 
-完整 Qwen grid 已经在固定的 50 条 GSM8K eval subset 上跑完。Aggregate metrics 在 [results/aggregated.csv](./results/aggregated.csv)，更详细的错误分析在 [docs/results_analysis.md](./docs/results_analysis.md)。Raw per-example JSONL outputs 有意不提交到 git。
+完整 Qwen grid 已经在固定的 50 条 GSM8K eval subset 上跑完。Aggregate metrics 在 [results/aggregated.csv](./results/aggregated.csv)，更详细的错误分析在 [docs/results_analysis.md](./docs/results_analysis.md)。Final-grid raw per-example JSONL outputs 已提交到 [results/raw](./results/raw)，方便 reviewer 审计 cost estimate 和 error analysis；smoke outputs 仍然被 ignore。
 
 | train_size | model variant | Greedy | SC@4 | SC@8 | best format rate |
 | ---: | --- | ---: | ---: | ---: | ---: |
@@ -186,7 +186,7 @@ bash scripts/verify_setup.sh --live
 - **数学 Self-Consistency 用 final-answer projection。** 对整个 response text 投票太脆弱，所以本项目对抽取出的 final number 投票。
 - **本地 dry-run，Colab 执行训练。** `training_hub` 的 LoRA path 使用 Unsloth backend，本地 Mac 环境无法直接跑；本地脚本负责验证 data 和 kwargs，Colab T4 执行真实 LoRA run。
 - **先小规模 smoke，再跑固定 eval。** 开发时用 `n_eval=3` 控制调试成本，路径稳定后再跑 50-row fixed subset。
-- **提交最终证据，忽略 raw noise。** `results/raw/*.jsonl` 有意忽略；最终 aggregate CSV 和 figures 会提交。
+- **提交最终证据，忽略 smoke noise。** Final-grid raw outputs 会提交，因为它们支撑 cost estimation 和 error analysis；smoke outputs、generated training JSONL 和 checkpoints 继续忽略。
 
 ## 什么有效 / 什么没效
 

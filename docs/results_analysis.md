@@ -5,7 +5,7 @@ This note summarizes the first full Qwen evaluation grid:
 - Eval set: 50 deterministic GSM8K test rows.
 - Model variants: base Qwen2.5-1.5B-Instruct, LoRA n100, LoRA n500.
 - Inference strategies: greedy, Self-Consistency @4, Self-Consistency @8.
-- Raw outputs are kept locally under `results/raw/` and intentionally ignored by git.
+- Final-grid raw outputs are committed under `results/raw/` for auditability; smoke outputs remain ignored by git.
 - Aggregate metrics are in `results/aggregated.csv`.
 
 ## Main Accuracy Result
